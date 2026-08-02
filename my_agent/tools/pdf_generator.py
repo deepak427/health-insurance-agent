@@ -20,40 +20,36 @@ def _safe(text: str) -> str:
     )
 
 
-# ── Brand Colours (Dolphin Buddy — Calm Coastal Soft Editorial) ────────────────
+# ── Brand Colours (Dolphin Buddy Portal) ──────────────────────────────────────
 #
-#  Warm Oat background:   #f9f8f6  → (249, 248, 246)
-#  Pebble surface:        #f1efe9  → (241, 239, 233)
-#  Card white:            #ffffff  → (255, 255, 255)
-#  Deep Sage accent:      #5b7c72  → ( 91, 124, 114)
-#  Sage hover:            #4a665d  → ( 74, 102,  93)
-#  Soft Coral highlight:  #e8a598  → (232, 165, 152)
-#  Warm Sand:             #d4c5b9  → (212, 197, 185)
-#  Soft border:           #e2ded7  → (226, 222, 215)
-#  Border highlight:      #d1ccc4  → (209, 204, 196)
-#  Espresso text:         #2c2a29  → ( 44,  42,  41)
-#  Warm grey muted:       #797571  → (121, 117, 113)
-#  Lighter dim:           #9e9a95  → (158, 154, 149)
+#  Navy sidebar:      #0b192c  → ( 11,  25,  44)
+#  Emerald primary:   #00a86b  → (  0, 168, 107)
+#  Emerald hover:     #008f5a  → (  0, 143,  90)
+#  Emerald light bg:  #dcf8c6  → (220, 248, 198)   ← user bubble tint
+#  Light gray bg:     #f8fafc  → (248, 250, 252)   ← chat stream bg
+#  White card:        #ffffff  → (255, 255, 255)
+#  Border:            #e5e7eb  → (229, 231, 235)
+#  Text main:         #1f2937  → ( 31,  41,  55)
+#  Text muted:        #6b7280  → (107, 114, 128)
+#  Text dim:          #9ca3af  → (156, 163, 175)
 
-_OAT        = (249, 248, 246)   # main background
-_PEBBLE     = (241, 239, 233)   # section / sidebar surface
-_WHITE      = (255, 255, 255)   # card surfaces
-_SAGE       = ( 91, 124, 114)   # primary accent (Deep Sage)
-_CORAL      = (232, 165, 152)   # soft coral highlight
-_SAND       = (212, 197, 185)   # warm sand secondary
-_BORDER     = (226, 222, 215)   # soft border
-_BORDER2    = (209, 204, 196)   # slightly darker border
-_TEXT       = ( 44,  42,  41)   # espresso — main text
-_MUTED      = (121, 117, 113)   # warm grey — secondary text
-_DIM        = (158, 154, 149)   # lighter dim — timestamps etc.
+_NAVY           = ( 11,  25,  44)
+_EMERALD        = (  0, 168, 107)
+_EMERALD_DARK   = (  0, 143,  90)
+_EMERALD_LIGHT  = (220, 248, 198)
+_BG_LIGHT       = (248, 250, 252)
+_WHITE          = (255, 255, 255)
+_BORDER         = (229, 231, 235)
+_TEXT           = ( 31,  41,  55)
+_MUTED          = (107, 114, 128)
+_DIM            = (156, 163, 175)
 
 
 class DolphinPDF(FPDF):
-    """FPDF subclass with Dolphin Buddy soft editorial theme."""
+    """FPDF subclass with Dolphin Buddy portal theme."""
 
     def header(self):
-        # Intentionally blank — branded header drawn once in _build_pdf
-        pass
+        pass  # drawn manually in _build_pdf
 
     def footer(self):
         self.set_y(-16)
@@ -70,7 +66,7 @@ class DolphinPDF(FPDF):
 
 
 def _build_pdf(title: str, sections: list[dict]) -> bytes:
-    """Build an airy, soft-editorial PDF matching the Dolphin Buddy UI."""
+    """Build a PDF matching the Dolphin Buddy portal UI theme."""
 
     pdf = DolphinPDF()
     pdf.set_auto_page_break(auto=True, margin=24)
@@ -78,43 +74,56 @@ def _build_pdf(title: str, sections: list[dict]) -> bytes:
 
     pw = pdf.w - pdf.l_margin - pdf.r_margin   # usable page width
 
-    # ── Full-page warm oat background ─────────────────────────────────────────
-    pdf.set_fill_color(*_OAT)
+    # ── Full-page light background ─────────────────────────────────────────────
+    pdf.set_fill_color(*_BG_LIGHT)
     pdf.rect(0, 0, pdf.w, pdf.h, style="F")
 
-    # ── Header band (pebble surface) ──────────────────────────────────────────
-    hdr_h = 30
-    pdf.set_fill_color(*_PEBBLE)
+    # ── Header band — navy ─────────────────────────────────────────────────────
+    hdr_h = 32
+    pdf.set_fill_color(*_NAVY)
     pdf.rect(0, 0, pdf.w, hdr_h, style="F")
 
-    # Sage left accent stripe
-    pdf.set_fill_color(*_SAGE)
+    # Emerald left accent stripe
+    pdf.set_fill_color(*_EMERALD)
     pdf.rect(0, 0, 5, hdr_h, style="F")
 
-    # Coral bottom accent line on header
-    pdf.set_fill_color(*_CORAL)
-    pdf.rect(0, hdr_h - 1.5, pdf.w, 1.5, style="F")
+    # Emerald bottom accent line
+    pdf.set_fill_color(*_EMERALD)
+    pdf.rect(0, hdr_h - 2, pdf.w, 2, style="F")
 
-    # Brand — "Dolphin Buddy"
-    pdf.set_xy(12, 8)
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.set_text_color(*_SAGE)
-    pdf.cell(30, 7, "Dolphin", ln=0)
-    pdf.set_text_color(*_TEXT)
-    pdf.cell(24, 7, " Buddy", ln=0)
+    # Draw the chat-bubble logo shape (simplified as coloured rect + dots)
+    logo_x, logo_y = 12, 7
+    logo_w, logo_h = 22, 12
+    pdf.set_fill_color(*_EMERALD)
+    # Bubble rect
+    pdf.rect(logo_x, logo_y, logo_w, logo_h, style="F")
+    # Bubble tail (small triangle implied by tiny rect offset)
+    pdf.rect(logo_x + 1, logo_y + logo_h, 5, 2.5, style="F")
+    # Three white dots
+    dot_y = logo_y + logo_h / 2 - 1
+    pdf.set_fill_color(*_WHITE)
+    for dot_x in [logo_x + 5, logo_x + 11, logo_x + 17]:
+        pdf.ellipse(dot_x, dot_y, 2.5, 2.5, style="F")
+
+    # Brand text — "Dolphin" + "Buddy"
+    pdf.set_xy(logo_x + logo_w + 4, 9)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_text_color(*_EMERALD)
+    pdf.cell(22, 7, "Dolphin", ln=0)
+    pdf.set_text_color(*_WHITE)
+    pdf.cell(18, 7, " Buddy", ln=0)
 
     # Tagline
-    pdf.set_xy(12, 18)
-    pdf.set_font("Helvetica", "", 7)
-    pdf.set_text_color(*_MUTED)
+    pdf.set_xy(logo_x + logo_w + 4, 19)
+    pdf.set_font("Helvetica", "", 6.5)
+    pdf.set_text_color(*_DIM)
     pdf.cell(80, 5, "AI Insurance Support")
 
-    # Small coral badge top-right
+    # "OFFICIAL GUIDE" badge — emerald pill top-right
     badge_w, badge_h = 38, 10
     bx = pdf.w - badge_w - 8
     by = (hdr_h - badge_h) / 2
-    pdf.set_fill_color(*_CORAL)
-    pdf.set_draw_color(*_CORAL)
+    pdf.set_fill_color(*_EMERALD)
     pdf.rect(bx, by, badge_w, badge_h, style="F")
     pdf.set_xy(bx, by + 1.5)
     pdf.set_font("Helvetica", "B", 6.5)
@@ -122,57 +131,61 @@ def _build_pdf(title: str, sections: list[dict]) -> bytes:
     pdf.cell(badge_w, 7, "OFFICIAL GUIDE", align="C")
 
     # ── Title block ───────────────────────────────────────────────────────────
-    pdf.set_y(hdr_h + 10)
+    pdf.set_y(hdr_h + 12)
     pdf.set_x(pdf.l_margin)
-    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_font("Helvetica", "B", 22)
     pdf.set_text_color(*_TEXT)
-    pdf.multi_cell(pw, 11, _safe(title), align="L")
+    pdf.multi_cell(pw, 12, _safe(title), align="L")
 
-    # Sage underline beneath title
+    # Emerald underline beneath title
     ul_y = pdf.get_y() + 3
-    pdf.set_draw_color(*_SAGE)
-    pdf.set_line_width(1.5)
-    pdf.line(pdf.l_margin, ul_y, pdf.l_margin + 50, ul_y)
-    # Coral continuation
-    pdf.set_draw_color(*_CORAL)
-    pdf.set_line_width(1.5)
-    pdf.line(pdf.l_margin + 52, ul_y, pdf.l_margin + 68, ul_y)
+    pdf.set_draw_color(*_EMERALD)
+    pdf.set_line_width(2.5)
+    pdf.line(pdf.l_margin, ul_y, pdf.l_margin + 55, ul_y)
+    # Lighter continuation
+    pdf.set_draw_color(*_EMERALD_LIGHT)
+    pdf.set_line_width(2.5)
+    pdf.line(pdf.l_margin + 57, ul_y, pdf.l_margin + 70, ul_y)
 
-    pdf.set_y(ul_y + 8)
+    pdf.set_y(ul_y + 10)
 
     # ── Sections ──────────────────────────────────────────────────────────────
     for section in sections:
-        # Section heading pill on white card
         heading = _safe(section["heading"])
         h_y = pdf.get_y()
         card_h = 12
 
+        # White card for heading
         pdf.set_fill_color(*_WHITE)
         pdf.set_draw_color(*_BORDER)
         pdf.set_line_width(0.25)
         pdf.rect(pdf.l_margin - 2, h_y, pw + 4, card_h, style="FD")
 
-        # Sage left pill accent
-        pdf.set_fill_color(*_SAGE)
-        pdf.rect(pdf.l_margin - 2, h_y, 3.5, card_h, style="F")
+        # Navy left accent pill
+        pdf.set_fill_color(*_NAVY)
+        pdf.rect(pdf.l_margin - 2, h_y, 4, card_h, style="F")
 
-        pdf.set_xy(pdf.l_margin + 5, h_y + 2.5)
+        # Emerald dot on left accent
+        pdf.set_fill_color(*_EMERALD)
+        pdf.ellipse(pdf.l_margin - 2, h_y + card_h / 2 - 1.5, 4, 4, style="F")
+
+        pdf.set_xy(pdf.l_margin + 6, h_y + 2.5)
         pdf.set_font("Helvetica", "B", 11)
-        pdf.set_text_color(*_SAGE)
+        pdf.set_text_color(*_NAVY)
         pdf.cell(pw - 10, 7, heading)
 
         pdf.set_y(h_y + card_h + 5)
 
-        # Section body
+        # Section body lines
         for line in section["lines"]:
             safe_line = _safe(line)
             is_bullet = safe_line.startswith(("-", "*"))
 
             if is_bullet:
-                # Coral soft dot
+                # Emerald bullet dot
                 dot_x = pdf.l_margin + 4
                 dot_y = pdf.get_y() + 3.2
-                pdf.set_fill_color(*_CORAL)
+                pdf.set_fill_color(*_EMERALD)
                 pdf.ellipse(dot_x, dot_y, 2.2, 2.2, style="F")
 
                 pdf.set_x(pdf.l_margin + 10)
@@ -199,10 +212,16 @@ def _build_pdf(title: str, sections: list[dict]) -> bytes:
     pdf.ln(2)
     disc_y = pdf.get_y()
     disc_h = 14
-    pdf.set_fill_color(*_PEBBLE)
+
+    # Emerald-light tint card
+    pdf.set_fill_color(*_EMERALD_LIGHT)
     pdf.set_draw_color(*_BORDER)
     pdf.set_line_width(0.25)
     pdf.rect(pdf.l_margin - 2, disc_y, pw + 4, disc_h, style="FD")
+
+    # Emerald left stripe on disclaimer
+    pdf.set_fill_color(*_EMERALD)
+    pdf.rect(pdf.l_margin - 2, disc_y, 3, disc_h, style="F")
 
     pdf.set_xy(pdf.l_margin + 4, disc_y + 2.5)
     pdf.set_font("Helvetica", "I", 7.5)
@@ -459,5 +478,5 @@ async def generate_insurance_summary_pdf(
         "filename": filename,
         "version": version,
         "size_bytes": len(pdf_bytes),
-        "instruction": f"Tell the user their '{guide['title'].replace(chr(10), ' ')}' PDF is ready and available as artifact '{filename}'.",
+        "instruction": f"Tell the user their '{guide['title'].replace(chr(10), ' ')}' guide is ready and attached to this message.",
     }
