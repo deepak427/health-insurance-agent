@@ -2,40 +2,34 @@
 Insurance Agent API Server
 --------------------------
 Local dev  : python main.py
-             Sessions  → SQLite (sessions.db)
-             Artifacts → local filesystem (managed by ADK under agents_dir)
-
-AWS EC2    : set env vars, run the same command
-             ARTIFACT_SERVICE_URI=s3://your-bucket-name
-             AWS_REGION=us-east-1                         (default: us-east-1)
-             SESSION_SERVICE_URI=sqlite+aiosqlite:///./sessions.db  (default)
-
-Multi-node : SESSION_SERVICE_URI=postgresql+asyncpg://user:pass@host/db
+AWS EC2    : set ARTIFACT_SERVICE_URI=s3://bucket + AWS_REGION for S3
+             set SESSION_SERVICE_URI=postgresql+asyncpg://... for multi-instance
 """
+import base64
 import os
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.cli.service_registry import get_service_registry
+from google.adk.cli.utils.service_factory import create_artifact_service_from_options
 
-load_dotenv()  # loads .env from the same folder as main.py
+load_dotenv()
 
 AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8080",
-    "*",  # lock to your domain in production
+    "*",
 ]
 
-# ── Register S3 as a custom artifact URI scheme ────────────────────────────────
-def _s3_artifact_factory(uri: str, **_) -> "S3ArtifactService":
-    """Factory called by ADK when artifact_service_uri starts with s3://"""
+# ── S3 support ─────────────────────────────────────────────────────────────────
+def _s3_artifact_factory(uri: str, **_):
     from urllib.parse import urlparse
     from services.s3_artifact_service import S3ArtifactService
-    parsed = urlparse(uri)
-    bucket = parsed.netloc          # s3://my-bucket  →  netloc = "my-bucket"
+    bucket = urlparse(uri).netloc
     region = os.environ.get("AWS_REGION", "us-east-1")
     print(f"[artifacts] S3 — bucket={bucket} region={region}")
     return S3ArtifactService(bucket_name=bucket, region_name=region)
@@ -43,27 +37,62 @@ def _s3_artifact_factory(uri: str, **_) -> "S3ArtifactService":
 get_service_registry().register_artifact_service("s3", _s3_artifact_factory)
 # ───────────────────────────────────────────────────────────────────────────────
 
-SESSION_SERVICE_URI = os.environ.get(
-    "SESSION_SERVICE_URI",
-    "sqlite+aiosqlite:///./sessions.db",
-)
-
-# If not set: ADK uses local filesystem storage automatically (no config needed)
+SESSION_SERVICE_URI = os.environ.get("SESSION_SERVICE_URI", "sqlite+aiosqlite:///./sessions.db")
 ARTIFACT_SERVICE_URI = os.environ.get("ARTIFACT_SERVICE_URI", None)
 
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
     session_service_uri=SESSION_SERVICE_URI,
-    artifact_service_uri=ARTIFACT_SERVICE_URI,   # None = local fs, s3://bucket = S3
+    artifact_service_uri=ARTIFACT_SERVICE_URI,
     use_local_storage=True,
     allow_origins=ALLOWED_ORIGINS,
     web=False,
+)
+
+# One shared artifact service instance for the download endpoint
+_artifact_svc = create_artifact_service_from_options(
+    base_dir=AGENT_DIR,
+    artifact_service_uri=ARTIFACT_SERVICE_URI,
+    use_local_storage=True,
 )
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get(
+    "/download/{app_name}/{user_id}/{session_id}/{filename:path}",
+    summary="Download an artifact as a real file (PDF, image, etc.)",
+)
+async def download_artifact(
+    app_name: str,
+    user_id: str,
+    session_id: str,
+    filename: str,
+    version: int = None,
+):
+    artifact = await _artifact_svc.load_artifact(
+        app_name=app_name,
+        user_id=user_id,
+        session_id=session_id,
+        filename=filename,
+        version=version,
+    )
+
+    if not artifact or not artifact.inline_data:
+        raise HTTPException(status_code=404, detail=f"'{filename}' not found")
+
+    inline = artifact.inline_data
+    raw = bytes(inline.data) if isinstance(inline.data, (bytes, bytearray)) else base64.b64decode(inline.data)
+    mime = inline.mime_type or "application/octet-stream"
+
+    return Response(
+        content=raw,
+        media_type=mime,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 if __name__ == "__main__":
