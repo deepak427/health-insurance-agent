@@ -9,11 +9,12 @@ import base64
 import os
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.cli.service_registry import get_service_registry
 from google.adk.cli.utils.service_factory import create_artifact_service_from_options
+from data.store import load, save, FILES
 
 load_dotenv()
 
@@ -60,6 +61,26 @@ _artifact_svc = create_artifact_service_from_options(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ── Dynamic data endpoints ─────────────────────────────────────────────────────
+VALID_KEYS = list(FILES.keys())  # ["faqs", "claims", "premium_config"]
+
+@app.get("/data/{key}", summary="Get agent data (faqs | claims | premium_config)")
+def get_data(key: str):
+    if key not in VALID_KEYS:
+        raise HTTPException(status_code=404, detail=f"Unknown key '{key}'. Valid: {VALID_KEYS}")
+    return load(key)
+
+
+@app.put("/data/{key}", summary="Update agent data (faqs | claims | premium_config)")
+async def put_data(key: str, request: Request):
+    if key not in VALID_KEYS:
+        raise HTTPException(status_code=404, detail=f"Unknown key '{key}'. Valid: {VALID_KEYS}")
+    body = await request.json()
+    save(key, body)
+    return {"status": "saved", "key": key}
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 @app.get(

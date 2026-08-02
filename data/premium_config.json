@@ -1,0 +1,28 @@
+{
+  "disclaimer": "Rough educational estimate only. Actual premiums vary by individual factors. Get quotes from licensed insurers.",
+  "life": {
+    "rate_under_40": 0.0003,
+    "rate_40_to_55": 0.0008,
+    "rate_over_55": 0.002,
+    "smoker_multiplier": 2.5,
+    "factors": ["Age", "Health", "Smoking status", "Coverage amount", "Term length"]
+  },
+  "health": {
+    "monthly_under_30": 300,
+    "monthly_30_to_50": 450,
+    "monthly_over_50": 650,
+    "family_multiplier": 2.8,
+    "note": "Based on marketplace averages. Employer plans typically cost less.",
+    "factors": ["Age", "Location", "Tobacco use", "Plan type", "Family size"]
+  },
+  "auto": {
+    "annual_base_25_plus": 1200,
+    "annual_base_under_25": 2200,
+    "luxury_multiplier": 1.5,
+    "factors": ["Driver age", "Driving record", "Vehicle type", "Location", "Coverage level"]
+  },
+  "home": {
+    "rate_of_coverage": 0.005,
+    "factors": ["Home value", "Location", "Construction type", "Claims history", "Deductible"]
+  }
+}
