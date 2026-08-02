@@ -14,226 +14,203 @@ def _safe(text: str) -> str:
         .replace("\u2019", "'")
         .replace("\u201c", '"')
         .replace("\u201d", '"')
-        .replace("\u2019", "'")
         .replace("\u00b7", "*")
         .encode("latin-1", errors="replace")
         .decode("latin-1")
     )
 
 
-# ── Brand Colours (matching Dolphin Buddy frontend) ────────────────────────────
-# Primary dark background:  stone-950  → (12, 10, 9)
-# Card/surface background:  stone-900  → (28, 25, 23)
-# Section surface:          stone-800  → (41, 37, 36)
-# Accent emerald:           #0f5132    → (15, 81, 50)
-# Accent teal highlight:    #0d9488    → (13, 148, 136)
-# Text primary:             stone-100  → (245, 245, 244)
-# Text muted:               stone-400  → (168, 162, 158)
-# Border subtle:            stone-700  → (68, 64, 60)
+# ── Brand Colours (Dolphin Buddy — Calm Coastal Soft Editorial) ────────────────
+#
+#  Warm Oat background:   #f9f8f6  → (249, 248, 246)
+#  Pebble surface:        #f1efe9  → (241, 239, 233)
+#  Card white:            #ffffff  → (255, 255, 255)
+#  Deep Sage accent:      #5b7c72  → ( 91, 124, 114)
+#  Sage hover:            #4a665d  → ( 74, 102,  93)
+#  Soft Coral highlight:  #e8a598  → (232, 165, 152)
+#  Warm Sand:             #d4c5b9  → (212, 197, 185)
+#  Soft border:           #e2ded7  → (226, 222, 215)
+#  Border highlight:      #d1ccc4  → (209, 204, 196)
+#  Espresso text:         #2c2a29  → ( 44,  42,  41)
+#  Warm grey muted:       #797571  → (121, 117, 113)
+#  Lighter dim:           #9e9a95  → (158, 154, 149)
 
-_DARK_BG      = (12, 10, 9)
-_CARD_BG      = (28, 25, 23)
-_SECTION_BG   = (41, 37, 36)
-_BORDER       = (68, 64, 60)
-_ACCENT       = (15, 81, 50)        # emerald-800
-_ACCENT_LIGHT = (16, 185, 129)      # emerald-500 — for highlights
-_TEAL         = (13, 148, 136)
-_TEXT_PRIMARY = (245, 245, 244)
-_TEXT_MUTED   = (168, 162, 158)
-_TEXT_DIM     = (120, 113, 108)
-_WHITE        = (255, 255, 255)
+_OAT        = (249, 248, 246)   # main background
+_PEBBLE     = (241, 239, 233)   # section / sidebar surface
+_WHITE      = (255, 255, 255)   # card surfaces
+_SAGE       = ( 91, 124, 114)   # primary accent (Deep Sage)
+_CORAL      = (232, 165, 152)   # soft coral highlight
+_SAND       = (212, 197, 185)   # warm sand secondary
+_BORDER     = (226, 222, 215)   # soft border
+_BORDER2    = (209, 204, 196)   # slightly darker border
+_TEXT       = ( 44,  42,  41)   # espresso — main text
+_MUTED      = (121, 117, 113)   # warm grey — secondary text
+_DIM        = (158, 154, 149)   # lighter dim — timestamps etc.
 
 
 class DolphinPDF(FPDF):
-    """Custom FPDF subclass with Dolphin Buddy dark theme."""
+    """FPDF subclass with Dolphin Buddy soft editorial theme."""
 
     def header(self):
-        """Intentionally empty — we draw a custom branded header in _build_pdf."""
+        # Intentionally blank — branded header drawn once in _build_pdf
         pass
 
     def footer(self):
-        self.set_y(-18)
-        self.set_font("Helvetica", "I", 7.5)
-        self.set_text_color(*_TEXT_DIM)
-        left = "Dolphin Buddy  |  AI Insurance Support"
-        right = f"Page {self.page_no()}"
-        self.cell(0, 6, _safe(left), align="L")
-        self.set_y(-18)
-        self.cell(0, 6, _safe(right), align="R")
-        # thin separator line above footer
+        self.set_y(-16)
+        # Thin rule
         self.set_draw_color(*_BORDER)
-        self.set_line_width(0.3)
-        self.line(self.l_margin, self.h - 20, self.w - self.r_margin, self.h - 20)
+        self.set_line_width(0.25)
+        self.line(self.l_margin, self.h - 17, self.w - self.r_margin, self.h - 17)
 
-
-def _draw_shield(pdf: FPDF, cx: float, cy: float, size: float = 10.0):
-    """Draw a simple shield shape filled with emerald accent colour."""
-    # Shield = rounded rectangle top + triangle bottom
-    w = size * 0.75
-    h = size
-    x = cx - w / 2
-    y = cy - h / 2
-
-    pdf.set_fill_color(*_ACCENT)
-    pdf.set_draw_color(*_ACCENT_LIGHT)
-    pdf.set_line_width(0.4)
-
-    # Top rounded rect (approximated with a rect + ellipse cap)
-    pdf.rect(x, y, w, h * 0.65, style="F")
-    # Bottom triangle point: draw filled polygon via lines
-    # (fpdf2 supports polygon — use three cells approximation)
-    # Simple approach: draw a solid rect that tapers — use ellipse for bottom cap
-    tip_y = y + h
-    mid_x = cx
-    pdf.set_fill_color(*_ACCENT_LIGHT)
-    # small highlight dot in centre of shield
-    pdf.ellipse(mid_x - 1.2, y + h * 0.15, 2.4, 2.4, style="F")
+        self.set_font("Helvetica", "", 7.5)
+        self.set_text_color(*_DIM)
+        self.cell(0, 6, _safe("Dolphin Buddy  |  AI Insurance Support"), align="L")
+        self.set_y(-16)
+        self.cell(0, 6, _safe(f"Page {self.page_no()}"), align="R")
 
 
 def _build_pdf(title: str, sections: list[dict]) -> bytes:
-    """Builds a styled Dolphin Buddy dark-theme PDF and returns raw bytes."""
+    """Build an airy, soft-editorial PDF matching the Dolphin Buddy UI."""
 
     pdf = DolphinPDF()
-    pdf.set_auto_page_break(auto=True, margin=22)
+    pdf.set_auto_page_break(auto=True, margin=24)
     pdf.add_page()
 
-    page_w = pdf.w - pdf.l_margin - pdf.r_margin
+    pw = pdf.w - pdf.l_margin - pdf.r_margin   # usable page width
 
-    # ── Full-page dark background ──────────────────────────────────────────────
-    pdf.set_fill_color(*_DARK_BG)
+    # ── Full-page warm oat background ─────────────────────────────────────────
+    pdf.set_fill_color(*_OAT)
     pdf.rect(0, 0, pdf.w, pdf.h, style="F")
 
-    # ── Top branded header bar ─────────────────────────────────────────────────
-    header_h = 28
-    pdf.set_fill_color(*_CARD_BG)
-    pdf.rect(0, 0, pdf.w, header_h, style="F")
+    # ── Header band (pebble surface) ──────────────────────────────────────────
+    hdr_h = 30
+    pdf.set_fill_color(*_PEBBLE)
+    pdf.rect(0, 0, pdf.w, hdr_h, style="F")
 
-    # Emerald left accent stripe
-    pdf.set_fill_color(*_ACCENT)
-    pdf.rect(0, 0, 4, header_h, style="F")
+    # Sage left accent stripe
+    pdf.set_fill_color(*_SAGE)
+    pdf.rect(0, 0, 5, hdr_h, style="F")
 
-    # Brand name: "DolphinBuddy"
-    pdf.set_xy(10, 6)
-    pdf.set_font("Helvetica", "B", 15)
-    pdf.set_text_color(*_ACCENT_LIGHT)
-    pdf.cell(32, 8, "Dolphin", ln=0)
-    pdf.set_text_color(*_TEXT_PRIMARY)
-    pdf.cell(22, 8, "Buddy", ln=0)
+    # Coral bottom accent line on header
+    pdf.set_fill_color(*_CORAL)
+    pdf.rect(0, hdr_h - 1.5, pdf.w, 1.5, style="F")
+
+    # Brand — "Dolphin Buddy"
+    pdf.set_xy(12, 8)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(*_SAGE)
+    pdf.cell(30, 7, "Dolphin", ln=0)
+    pdf.set_text_color(*_TEXT)
+    pdf.cell(24, 7, " Buddy", ln=0)
 
     # Tagline
-    pdf.set_xy(10, 15)
+    pdf.set_xy(12, 18)
     pdf.set_font("Helvetica", "", 7)
-    pdf.set_text_color(*_TEXT_MUTED)
-    pdf.cell(80, 5, "AI Insurance Support  *  insurance.dolphinbuddy.ai")
+    pdf.set_text_color(*_MUTED)
+    pdf.cell(80, 5, "AI Insurance Support")
 
-    # "VERIFIED" badge on the right
-    badge_x = pdf.w - 48
-    badge_y = 8
-    badge_w = 36
-    badge_h = 11
-    pdf.set_fill_color(*_ACCENT)
-    pdf.set_draw_color(*_ACCENT_LIGHT)
-    pdf.set_line_width(0.5)
-    pdf.rect(badge_x, badge_y, badge_w, badge_h, style="FD")
-    pdf.set_xy(badge_x, badge_y + 1.5)
-    pdf.set_font("Helvetica", "B", 7)
-    pdf.set_text_color(*_ACCENT_LIGHT)
-    pdf.cell(badge_w, 7, "* OFFICIAL GUIDE", align="C")
+    # Small coral badge top-right
+    badge_w, badge_h = 38, 10
+    bx = pdf.w - badge_w - 8
+    by = (hdr_h - badge_h) / 2
+    pdf.set_fill_color(*_CORAL)
+    pdf.set_draw_color(*_CORAL)
+    pdf.rect(bx, by, badge_w, badge_h, style="F")
+    pdf.set_xy(bx, by + 1.5)
+    pdf.set_font("Helvetica", "B", 6.5)
+    pdf.set_text_color(*_WHITE)
+    pdf.cell(badge_w, 7, "OFFICIAL GUIDE", align="C")
 
-    # thin bottom border for header
-    pdf.set_draw_color(*_ACCENT)
-    pdf.set_line_width(0.6)
-    pdf.line(0, header_h, pdf.w, header_h)
+    # ── Title block ───────────────────────────────────────────────────────────
+    pdf.set_y(hdr_h + 10)
+    pdf.set_x(pdf.l_margin)
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(*_TEXT)
+    pdf.multi_cell(pw, 11, _safe(title), align="L")
 
-    # ── Document title block ───────────────────────────────────────────────────
-    pdf.set_xy(pdf.l_margin, header_h + 8)
+    # Sage underline beneath title
+    ul_y = pdf.get_y() + 3
+    pdf.set_draw_color(*_SAGE)
+    pdf.set_line_width(1.5)
+    pdf.line(pdf.l_margin, ul_y, pdf.l_margin + 50, ul_y)
+    # Coral continuation
+    pdf.set_draw_color(*_CORAL)
+    pdf.set_line_width(1.5)
+    pdf.line(pdf.l_margin + 52, ul_y, pdf.l_margin + 68, ul_y)
 
-    # Title pill background
-    title_block_h = 18
-    pdf.set_fill_color(*_SECTION_BG)
-    pdf.rect(pdf.l_margin - 2, header_h + 6, page_w + 4, title_block_h, style="F")
+    pdf.set_y(ul_y + 8)
 
-    pdf.set_xy(pdf.l_margin, header_h + 9)
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_text_color(*_TEXT_PRIMARY)
-    pdf.cell(page_w, 10, _safe(title), align="C")
-
-    # thin emerald underline
-    underline_y = header_h + 6 + title_block_h
-    pdf.set_draw_color(*_ACCENT_LIGHT)
-    pdf.set_line_width(1.2)
-    pdf.line(pdf.l_margin + 20, underline_y, pdf.w - pdf.r_margin - 20, underline_y)
-
-    pdf.set_y(underline_y + 6)
-
-    # ── Sections ───────────────────────────────────────────────────────────────
+    # ── Sections ──────────────────────────────────────────────────────────────
     for section in sections:
-        # Section heading pill
-        pdf.set_x(pdf.l_margin)
-        heading_y = pdf.get_y()
-        heading_h = 10
+        # Section heading pill on white card
+        heading = _safe(section["heading"])
+        h_y = pdf.get_y()
+        card_h = 12
 
-        pdf.set_fill_color(*_CARD_BG)
-        pdf.set_draw_color(*_BORDER)
-        pdf.set_line_width(0.3)
-        pdf.rect(pdf.l_margin - 2, heading_y, page_w + 4, heading_h, style="FD")
-
-        # Emerald left accent for heading
-        pdf.set_fill_color(*_ACCENT_LIGHT)
-        pdf.rect(pdf.l_margin - 2, heading_y, 3, heading_h, style="F")
-
-        pdf.set_xy(pdf.l_margin + 4, heading_y + 1.5)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_text_color(*_ACCENT_LIGHT)
-        pdf.cell(page_w - 6, 7, _safe(section["heading"]))
-
-        pdf.set_y(heading_y + heading_h + 3)
-
-        # Section body lines
-        pdf.set_font("Helvetica", "", 10)
-        for line in section["lines"]:
-            safe_line = _safe(line)
-            is_bullet = safe_line.startswith(("-", "*", "•", "~"))
-
-            if is_bullet:
-                # Bullet indicator dot
-                dot_x = pdf.l_margin + 4
-                dot_y = pdf.get_y() + 3.5
-                pdf.set_fill_color(*_ACCENT_LIGHT)
-                pdf.ellipse(dot_x, dot_y, 2, 2, style="F")
-
-                pdf.set_x(pdf.l_margin + 9)
-                pdf.set_text_color(*_TEXT_PRIMARY)
-                # Strip bullet char and leading space
-                stripped = safe_line.lstrip("-*•~ ").strip()
-                pdf.multi_cell(page_w - 9, 6.5, stripped)
-            else:
-                pdf.set_x(pdf.l_margin)
-                pdf.set_text_color(*_TEXT_MUTED)
-                pdf.multi_cell(page_w, 6.5, safe_line)
-
-        pdf.ln(5)
-
-        # thin rule between sections
+        pdf.set_fill_color(*_WHITE)
         pdf.set_draw_color(*_BORDER)
         pdf.set_line_width(0.25)
-        pdf.line(pdf.l_margin, pdf.get_y() - 2, pdf.w - pdf.r_margin, pdf.get_y() - 2)
-        pdf.ln(2)
+        pdf.rect(pdf.l_margin - 2, h_y, pw + 4, card_h, style="FD")
 
-    # ── Bottom disclaimer block ────────────────────────────────────────────────
-    pdf.ln(4)
+        # Sage left pill accent
+        pdf.set_fill_color(*_SAGE)
+        pdf.rect(pdf.l_margin - 2, h_y, 3.5, card_h, style="F")
+
+        pdf.set_xy(pdf.l_margin + 5, h_y + 2.5)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(*_SAGE)
+        pdf.cell(pw - 10, 7, heading)
+
+        pdf.set_y(h_y + card_h + 5)
+
+        # Section body
+        for line in section["lines"]:
+            safe_line = _safe(line)
+            is_bullet = safe_line.startswith(("-", "*"))
+
+            if is_bullet:
+                # Coral soft dot
+                dot_x = pdf.l_margin + 4
+                dot_y = pdf.get_y() + 3.2
+                pdf.set_fill_color(*_CORAL)
+                pdf.ellipse(dot_x, dot_y, 2.2, 2.2, style="F")
+
+                pdf.set_x(pdf.l_margin + 10)
+                pdf.set_font("Helvetica", "", 10)
+                pdf.set_text_color(*_TEXT)
+                stripped = safe_line.lstrip("-* ").strip()
+                pdf.multi_cell(pw - 10, 6.5, stripped)
+            else:
+                pdf.set_x(pdf.l_margin + 2)
+                pdf.set_font("Helvetica", "", 10)
+                pdf.set_text_color(*_MUTED)
+                pdf.multi_cell(pw - 2, 6.5, safe_line)
+
+        pdf.ln(4)
+
+        # Subtle divider between sections
+        div_y = pdf.get_y()
+        pdf.set_draw_color(*_BORDER)
+        pdf.set_line_width(0.2)
+        pdf.line(pdf.l_margin, div_y, pdf.w - pdf.r_margin, div_y)
+        pdf.ln(5)
+
+    # ── Disclaimer card ───────────────────────────────────────────────────────
+    pdf.ln(2)
     disc_y = pdf.get_y()
-    pdf.set_fill_color(*_CARD_BG)
+    disc_h = 14
+    pdf.set_fill_color(*_PEBBLE)
     pdf.set_draw_color(*_BORDER)
-    pdf.set_line_width(0.3)
-    pdf.rect(pdf.l_margin - 2, disc_y, page_w + 4, 12, style="FD")
-    pdf.set_xy(pdf.l_margin + 2, disc_y + 2)
+    pdf.set_line_width(0.25)
+    pdf.rect(pdf.l_margin - 2, disc_y, pw + 4, disc_h, style="FD")
+
+    pdf.set_xy(pdf.l_margin + 4, disc_y + 2.5)
     pdf.set_font("Helvetica", "I", 7.5)
-    pdf.set_text_color(*_TEXT_DIM)
+    pdf.set_text_color(*_MUTED)
     pdf.multi_cell(
-        page_w - 4, 4.5,
+        pw - 8, 4.5,
         "This document is generated by Dolphin Buddy AI for informational purposes only. "
-        "It does not constitute professional insurance advice. Always consult a licensed "
+        "It does not constitute professional insurance advice. Consult a licensed "
         "insurance professional for decisions specific to your situation.",
     )
 
@@ -258,7 +235,7 @@ async def generate_insurance_summary_pdf(
     """
     guides = {
         "health": {
-            "title": "Health Insurance - Complete Guide",
+            "title": "Health Insurance\nComplete Guide",
             "sections": [
                 {
                     "heading": "What is Health Insurance?",
@@ -274,7 +251,7 @@ async def generate_insurance_summary_pdf(
                         "- Deductible: Amount you pay before insurance kicks in.",
                         "- Copay: Fixed fee per visit (e.g. $20 for a doctor visit).",
                         "- Coinsurance: Your share after deductible (e.g. 20% of costs).",
-                        "- Out-of-Pocket Maximum: The most you'll pay in a year.",
+                        "- Out-of-Pocket Maximum: The most you will pay in a year.",
                         "- Network: Doctors/hospitals that have agreements with your insurer.",
                     ],
                 },
@@ -292,20 +269,20 @@ async def generate_insurance_summary_pdf(
                     "lines": [
                         "- Check if your current doctors are in-network.",
                         "- Estimate your yearly medical usage before picking a deductible.",
-                        "- Consider an HDHP + HSA if you're generally healthy.",
+                        "- Consider an HDHP + HSA if you are generally healthy.",
                         "- Always check prescription drug coverage.",
                     ],
                 },
             ],
         },
         "auto": {
-            "title": "Auto Insurance - Complete Guide",
+            "title": "Auto Insurance\nComplete Guide",
             "sections": [
                 {
                     "heading": "What is Auto Insurance?",
                     "lines": [
                         "Auto insurance protects you financially in case of accidents,",
-                        "theft, or damage to your vehicle or others' property.",
+                        "theft, or damage to your vehicle or others property.",
                     ],
                 },
                 {
@@ -340,7 +317,7 @@ async def generate_insurance_summary_pdf(
             ],
         },
         "home": {
-            "title": "Home Insurance - Complete Guide",
+            "title": "Home Insurance\nComplete Guide",
             "sections": [
                 {
                     "heading": "What is Home Insurance?",
@@ -362,8 +339,8 @@ async def generate_insurance_summary_pdf(
                 {
                     "heading": "What's NOT Covered",
                     "lines": [
-                        "- Floods - requires a separate flood insurance policy.",
-                        "- Earthquakes - requires a separate earthquake policy.",
+                        "- Floods: Requires a separate flood insurance policy.",
+                        "- Earthquakes: Requires a separate earthquake policy.",
                         "- Normal wear and tear.",
                         "- Pest or insect damage.",
                     ],
@@ -379,7 +356,7 @@ async def generate_insurance_summary_pdf(
             ],
         },
         "life": {
-            "title": "Life Insurance - Complete Guide",
+            "title": "Life Insurance\nComplete Guide",
             "sections": [
                 {
                     "heading": "What is Life Insurance?",
@@ -409,14 +386,14 @@ async def generate_insurance_summary_pdf(
                     "heading": "Tips",
                     "lines": [
                         "- Buy early - premiums are much lower when you're young and healthy.",
-                        "- Review and update beneficiaries after life events.",
+                        "- Review and update beneficiaries after major life events.",
                         "- Term life is usually the best starting point for most families.",
                     ],
                 },
             ],
         },
         "travel": {
-            "title": "Travel Insurance - Complete Guide",
+            "title": "Travel Insurance\nComplete Guide",
             "sections": [
                 {
                     "heading": "What is Travel Insurance?",
@@ -428,7 +405,7 @@ async def generate_insurance_summary_pdf(
                 {
                     "heading": "What's Typically Covered",
                     "lines": [
-                        "- Trip cancellation / interruption",
+                        "- Trip cancellation and interruption",
                         "- Emergency medical expenses abroad",
                         "- Medical evacuation",
                         "- Lost, stolen, or delayed baggage",
@@ -439,7 +416,7 @@ async def generate_insurance_summary_pdf(
                 {
                     "heading": "When You Need It Most",
                     "lines": [
-                        "- International travel where your health plan doesn't apply.",
+                        "- International travel where your health plan does not apply.",
                         "- Expensive non-refundable trips.",
                         "- Travel to regions with political instability or health risks.",
                     ],
@@ -478,9 +455,9 @@ async def generate_insurance_summary_pdf(
 
     return {
         "status": "success",
-        "message": f"PDF guide generated and saved.",
+        "message": "PDF guide generated and saved.",
         "filename": filename,
         "version": version,
         "size_bytes": len(pdf_bytes),
-        "instruction": f"Tell the user their '{guide['title']}' PDF is ready and available as artifact '{filename}'.",
+        "instruction": f"Tell the user their '{guide['title'].replace(chr(10), ' ')}' PDF is ready and available as artifact '{filename}'.",
     }
