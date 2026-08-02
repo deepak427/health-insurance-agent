@@ -11,7 +11,7 @@ from .tools import (
 )
 
 root_agent = Agent(
-    model='gemini-2.5-flash',
+    model='gemini-2.5-flash-latest',
     name='insurance_support_agent',
     description='Expert insurance support — answers questions, analyzes policy documents, guides claims, generates PDF guides, and explains coverage.',
     instruction=INSURANCE_AGENT_PROMPT,
