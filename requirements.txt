@@ -1,0 +1,7 @@
+google-adk[cli]
+uvicorn[standard]
+sqlalchemy[asyncio]
+aiosqlite
+fpdf2
+python-dotenv
+boto3
