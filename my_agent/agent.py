@@ -11,6 +11,9 @@ from .tools import (
     get_claim_filing_steps,
     analyze_insurance_document,
     generate_insurance_summary_pdf,
+    get_policy_limits,
+    calculate_premium,
+    generate_policy_comparison_pdf,
 )
 
 _RESPONSE_PROMPT_PATH = os.path.join(
@@ -70,6 +73,9 @@ root_agent = Agent(
         get_claim_filing_steps,
         analyze_insurance_document,
         generate_insurance_summary_pdf,
+        get_policy_limits,
+        calculate_premium,
+        generate_policy_comparison_pdf,
         LoadArtifactsTool(),
     ],
 )

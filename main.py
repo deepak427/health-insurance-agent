@@ -63,6 +63,40 @@ def health():
     return {"status": "ok"}
 
 
+# ── hip-backend proxy endpoints ────────────────────────────────────────────────
+_HIP_BACKEND = os.environ.get("BACKEND_BASE_URL", "http://localhost:5000")
+_HIP_JWT = os.environ.get("AGENT_JWT_TOKEN", "")
+
+def _hip_headers():
+    return {
+        "Content-Type": "application/json",
+        "Cookie": f"Authorization={_HIP_JWT}",
+    }
+
+
+@app.get("/policies", summary="Proxy — list all available health policies from hip-backend")
+def list_policies():
+    import requests as _req
+    try:
+        res = _req.get(f"{_HIP_BACKEND}/policy", headers=_hip_headers(), timeout=10)
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"hip-backend unreachable: {e}")
+
+
+@app.get("/companies", summary="Proxy — list all insurance companies from hip-backend")
+def list_companies():
+    import requests as _req
+    try:
+        res = _req.get(f"{_HIP_BACKEND}/company", headers=_hip_headers(), timeout=10)
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"hip-backend unreachable: {e}")
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 # ── Dynamic data endpoints ─────────────────────────────────────────────────────
 VALID_KEYS = list(FILES.keys())  # ["faqs", "claims", "premium_config"]
 
