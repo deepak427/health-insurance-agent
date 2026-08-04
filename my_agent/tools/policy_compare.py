@@ -255,10 +255,33 @@ async def generate_policy_comparison_pdf(
     Returns:
         dict with status, filename, and instructions for the agent.
     """
+    limits = [limits_id_1, limits_id_2]
+    type_map = {1: "single", 2: "double"}
+    comparison_type = type_map.get(len(limits), "multiple")
+
+    # Step 1: Fetch the full limit document object for limits_id_1
+    # Backend requires the full object in "limit", not just the ID string
+    try:
+        log.info("generate_comparison_pdf FETCHING limit object | id=%s", limits_id_1)
+        limit_res = requests.get(
+            f"{_BACKEND}/limit/{limits_id_1}",
+            headers=_auth_headers(),
+            timeout=10,
+        )
+        if limit_res.status_code != 200:
+            log.error("generate_comparison_pdf LIMIT FETCH FAILED | status=%d | body=%s", limit_res.status_code, limit_res.text[:200])
+            return {"status": "error", "message": f"Failed to fetch limit document: {limit_res.status_code}"}
+        limit_object = limit_res.json().get("data", {})
+        log.info("generate_comparison_pdf LIMIT OBJECT OK | keys=%s", list(limit_object.keys()) if isinstance(limit_object, dict) else "non-dict")
+    except Exception as e:
+        log.exception("generate_comparison_pdf LIMIT FETCH EXCEPTION | %s", e)
+        return {"status": "error", "message": f"Failed to fetch limit document: {e}"}
+
+    # Step 2: Build payload with full limit object
     payload = {
-        "type": "double",  # "single" | "double" | "multiple" based on limit count
-        "limit": limits_id_1,  # root-level limit required by EJS template
-        "limits": [limits_id_1, limits_id_2],
+        "type": comparison_type,
+        "limit": limit_object,  # full document object, NOT just the ID string
+        "limits": limits,
         "actualPeriod": premium_body_1.get("period", "1 Year"),
         "amount": [amount_1, amount_2],
         "bank": [
@@ -270,8 +293,7 @@ async def generate_policy_comparison_pdf(
     }
 
     try:
-        log.info("generate_comparison_pdf CALLING HTML endpoint | limits=[%s, %s]", limits_id_1, limits_id_2)
-        log.info("generate_comparison_pdf PAYLOAD | %s", payload)
+        log.info("generate_comparison_pdf CALLING HTML endpoint | type=%s | limits=%s", comparison_type, limits)
         res = requests.post(
             f"{_BACKEND}/limit/pdf_compare_premium_new_html",
             json=payload,
@@ -285,7 +307,6 @@ async def generate_policy_comparison_pdf(
                 "message": f"hip-backend returned {res.status_code}: {res.text[:200]}",
             }
 
-        # Backend may return HTTP 200 with a JSON error body instead of HTML
         html_content = res.text
         log.info("generate_comparison_pdf HTML RESPONSE | length=%d | preview=%s", len(html_content), html_content[:200])
 
