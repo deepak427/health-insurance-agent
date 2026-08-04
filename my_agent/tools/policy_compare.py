@@ -270,6 +270,7 @@ async def generate_policy_comparison_pdf(
 
     try:
         log.info("generate_comparison_pdf CALLING HTML endpoint | limits=[%s, %s]", limits_id_1, limits_id_2)
+        log.info("generate_comparison_pdf PAYLOAD | %s", payload)
         res = requests.post(
             f"{_BACKEND}/limit/pdf_compare_premium_new_html",
             json=payload,
@@ -282,8 +283,21 @@ async def generate_policy_comparison_pdf(
                 "status": "error",
                 "message": f"hip-backend returned {res.status_code}: {res.text[:200]}",
             }
+
+        # Backend may return HTTP 200 with a JSON error body instead of HTML
         html_content = res.text
-        log.info("generate_comparison_pdf HTML OK | length=%d chars", len(html_content))
+        log.info("generate_comparison_pdf HTML RESPONSE | length=%d | preview=%s", len(html_content), html_content[:200])
+
+        # Detect JSON error body (backend returns {"code":400,"msg":"..."} with HTTP 200)
+        if html_content.strip().startswith("{") and len(html_content) < 500:
+            try:
+                import json as _json
+                err = _json.loads(html_content)
+                msg = err.get("msg") or err.get("message") or "error occurred while printing pdf"
+                log.error("generate_comparison_pdf BACKEND ERROR IN BODY | %s", msg)
+                return {"status": "error", "message": f"Comparison PDF failed: {msg}"}
+            except Exception:
+                pass  # not JSON, proceed normally
 
     except Exception as e:
         log.exception("generate_comparison_pdf HTML EXCEPTION | %s", e)
