@@ -256,7 +256,7 @@ async def generate_policy_comparison_pdf(
         dict with status, filename, and instructions for the agent.
     """
     payload = {
-        "type": "multiple",
+        "type": "double",  # Backend expects "double" for 2-policy comparison, not "multiple"
         "limits": [limits_id_1, limits_id_2],
         "actualPeriod": premium_body_1.get("period", "1 Year"),
         "amount": [amount_1, amount_2],
