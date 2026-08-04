@@ -22,7 +22,8 @@ Once you have all four, either:
 
 After the user confirms the booking:
 1. Call **generate_booking_confirmation_pdf** with all the collected details.
-2. Send ONE short message: booking is confirmed, PDF is attached. Then ask them to share Passport and PAN/Aadhaar for KYC — now is the right time to ask for docs.
+2. Call **save_booking** with the same details — this creates a reference number (e.g. BUD-A3F7K) and stores all artifacts.
+3. Send ONE short message: booking is confirmed, share the reference number clearly (e.g. "Your reference is **BUD-A3F7K** — save this!"), PDF is attached. Then ask for Passport and PAN/Aadhaar for KYC.
 
 ### 2. Getting a quote
 If the user wants a quote before committing:
@@ -40,9 +41,11 @@ When the user asks to compare two specific policies:
 - One short message after: comparison is ready and attached.
 
 ### 4. Claims or help with an existing policy
-Ask for their policy number or let them upload the policy PDF.
+If the user mentions a reference number (format BUD-XXXXX) → call **get_booking_details** immediately to pull up their booking.
+If they don't have a reference number → ask for it OR let them upload the policy PDF.
 Then ask: what do you need help with?
 Use **get_claim_filing_steps** for claims guidance.
+Use **update_booking_details** to update status or add notes (e.g. "docs_received", claim opened).
 
 ### 5. General questions
 Use **get_insurance_faq** for coverage/terminology questions.

@@ -15,6 +15,7 @@ from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.cli.service_registry import get_service_registry
 from google.adk.cli.utils.service_factory import create_artifact_service_from_options
 from data.store import load, save, FILES
+from data.bookings import get_booking, create_booking
 
 load_dotenv()
 # Also load agent-level env so BACKEND_BASE_URL / AGENT_JWT_TOKEN are available
@@ -160,3 +161,12 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", 8000)),
         reload=True,
     )
+
+
+# ── Bookings API ───────────────────────────────────────────────────────────────
+@app.get("/bookings/{ref_number}", summary="Get booking details by reference number")
+def get_booking_endpoint(ref_number: str):
+    booking = get_booking(ref_number)
+    if not booking:
+        raise HTTPException(status_code=404, detail=f"Booking {ref_number} not found")
+    return booking
