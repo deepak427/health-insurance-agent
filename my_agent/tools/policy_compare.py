@@ -272,15 +272,14 @@ async def generate_policy_comparison_pdf(
             log.error("generate_comparison_pdf LIMIT FETCH FAILED | status=%d | body=%s", limit_res.status_code, limit_res.text[:200])
             return {"status": "error", "message": f"Failed to fetch limit document: {limit_res.status_code}"}
         raw = limit_res.json()
-        log.info("generate_comparison_pdf LIMIT RAW RESPONSE | type=%s | keys=%s | preview=%s",
-                 type(raw).__name__,
-                 list(raw.keys()) if isinstance(raw, dict) else "n/a",
-                 str(raw)[:300])
-        # Try common response shapes
-        if isinstance(raw, dict):
-            limit_object = raw.get("data") or raw.get("limit") or raw
+        limit_data = raw.get("data") if isinstance(raw, dict) else raw
+        if isinstance(limit_data, list) and len(limit_data) > 0:
+            limit_object = limit_data[0]
+        elif isinstance(limit_data, dict):
+            limit_object = limit_data
         else:
-            limit_object = raw
+            log.error("generate_comparison_pdf LIMIT OBJECT INVALID | raw=%s", str(raw)[:300])
+            return {"status": "error", "message": "Could not fetch a valid limit document for comparison"}
         log.info("generate_comparison_pdf LIMIT OBJECT | type=%s | keys=%s",
                  type(limit_object).__name__,
                  list(limit_object.keys()) if isinstance(limit_object, dict) else "n/a")
