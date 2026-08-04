@@ -3,6 +3,7 @@ Policy comparison tools — connects to hip-backend to fetch real
 policy limits, calculate live premiums, and generate a comparison PDF.
 """
 import os
+import logging
 import requests
 from typing import Optional
 import google.genai.types as types
@@ -10,6 +11,21 @@ from google.adk.tools import ToolContext
 
 _BACKEND = os.getenv("BACKEND_BASE_URL", "http://localhost:5000")
 _JWT = os.getenv("AGENT_JWT_TOKEN", "")
+
+# Logs go to stdout (visible in your terminal where you run `python main.py`)
+# and also to a file: hip/policy_compare.log
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(
+            os.path.join(os.path.dirname(__file__), "..", "..", "policy_compare.log"),
+            encoding="utf-8",
+        ),
+    ],
+)
+log = logging.getLogger("policy_compare")
 
 
 def _auth_headers() -> dict:
@@ -35,26 +51,29 @@ def search_policies(query: str) -> dict:
           - policy_id, limits_id, name, company, subplans [{subplan_id, name}]
     """
     try:
+        log.info("search_policies | query=%r | url=%s/policy", query, _BACKEND)
         res = requests.get(
             f"{_BACKEND}/policy",
             params={"search": query, "limit": 5},
             headers=_auth_headers(),
             timeout=10,
         )
+        log.info("search_policies | status=%d", res.status_code)
         if res.status_code != 200:
+            log.error("search_policies | error body: %s", res.text[:300])
             return {"status": "error", "message": f"hip-backend returned {res.status_code}"}
 
         data = res.json()
         policies = data.get("data", []) if isinstance(data, dict) else data
+        log.info("search_policies | total results from API: %d", len(policies))
 
         if not policies:
+            log.warning("search_policies | no matches for query=%r", query)
             return {"status": "not_found", "message": f"No policies matched '{query}'."}
 
         results = []
-        for p in policies[:3]:  # cap — agent only needs the top match
+        for p in policies[:3]:
             company_raw = p.get("companyId") or {}
-
-            # limits_id lives inside subPolicies[n].limits[0]._id (confirmed from API response)
             subpolicies = p.get("subPolicies") or []
             subplans = []
             for s in subpolicies:
@@ -73,9 +92,12 @@ def search_policies(query: str) -> dict:
                 "subplans": subplans,
             })
 
+        log.info("search_policies | returning %d match(es): %s",
+                 len(results), [r["name"] for r in results])
         return {"status": "success", "matches": results}
 
     except Exception as e:
+        log.exception("search_policies | exception: %s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -153,19 +175,25 @@ def calculate_premium(
         body["zone"] = zone
 
     try:
+        log.info("calculate_premium | policy=%s subplan=%s limit=%s age=%s adults=%d",
+                 policy_id, subplan_id, sum_insured, age, adults)
         res = requests.post(
             f"{_BACKEND}/premiumCalculator/calculate",
             json=body,
             headers=_auth_headers(),
             timeout=10,
         )
+        log.info("calculate_premium | status=%d", res.status_code)
         if res.status_code != 200:
+            log.error("calculate_premium | error body: %s", res.text[:300])
             return {"status": "error", "message": f"hip-backend returned {res.status_code}: {res.text[:200]}"}
-        data = res.json()
-        inner = data.get("data", {}) if isinstance(data, dict) else {}
 
-        # Confirmed field from API: totalRateAmountWithGst is the final amount inc. GST
+        data = res.json()
+        log.debug("calculate_premium | raw response keys: %s",
+                  list(data.get("data", data).keys()) if isinstance(data, dict) else type(data))
+        inner = data.get("data", {}) if isinstance(data, dict) else {}
         amount = inner.get("totalRateAmountWithGst") or inner.get("totalRateAmount") or 0
+        log.info("calculate_premium | amount=%s", amount)
 
         return {
             "status": "success",
@@ -173,6 +201,7 @@ def calculate_premium(
             "amount": amount,
         }
     except Exception as e:
+        log.exception("calculate_premium | exception: %s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -217,28 +246,35 @@ async def generate_policy_comparison_pdf(
     }
 
     try:
+        log.info("generate_comparison_pdf | limits=[%s, %s] amounts=[%s, %s]",
+                 limits_id_1, limits_id_2, amount_1, amount_2)
         res = requests.post(
             f"{_BACKEND}/limit/pdf_compare_premium_new_html",
             json=payload,
             headers=_auth_headers(),
             timeout=30,
         )
+        log.info("generate_comparison_pdf | html fetch status=%d", res.status_code)
         if res.status_code != 200:
+            log.error("generate_comparison_pdf | error body: %s", res.text[:300])
             return {
                 "status": "error",
                 "message": f"hip-backend returned {res.status_code}: {res.text[:200]}",
             }
-
         html_content = res.text
+        log.info("generate_comparison_pdf | html length=%d chars", len(html_content))
 
     except Exception as e:
+        log.exception("generate_comparison_pdf | html fetch exception: %s", e)
         return {"status": "error", "message": f"Failed to fetch comparison HTML: {e}"}
 
     # Convert HTML → PDF
     try:
         from weasyprint import HTML
         pdf_bytes = HTML(string=html_content, base_url=_BACKEND).write_pdf()
+        log.info("generate_comparison_pdf | pdf size=%d bytes", len(pdf_bytes))
     except Exception as e:
+        log.exception("generate_comparison_pdf | weasyprint failed: %s", e)
         return {"status": "error", "message": f"PDF conversion failed: {e}"}
 
     # Save as artifact — identical pattern to generate_insurance_summary_pdf
