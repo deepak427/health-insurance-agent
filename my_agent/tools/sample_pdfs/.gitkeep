@@ -1,0 +1,2 @@
+# Place the_sample_pdf1.pdf and the_sample_pdf2.pdf in this directory.
+# They will be used as fallback when the backend PDF engine fails.
