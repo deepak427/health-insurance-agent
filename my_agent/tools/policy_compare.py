@@ -68,6 +68,12 @@ def search_policies(query: str) -> dict:
             for p in policies[:3]:
                 company_raw = p.get("companyId") or {}
                 subpolicies = p.get("subPolicies") or []
+                
+                # Skip policies with no subpolicies — can't calculate premium for them
+                if not subpolicies:
+                    log.warning("search_policies SKIP | policy=%s | reason=no subPolicies", p.get("name"))
+                    continue
+                
                 subplans = []
                 for s in subpolicies:
                     sub_limits = s.get("limits") or []
@@ -83,6 +89,10 @@ def search_policies(query: str) -> dict:
                     "company": company_raw.get("name", "") if isinstance(company_raw, dict) else "",
                     "subplans": subplans,
                 })
+
+            if not results:
+                log.warning("search_policies NO USABLE RESULTS | query=%r | all policies had no subPolicies", term)
+                continue
 
             log.info("search_policies OK | term=%r | matches=%s", term, [r["name"] for r in results])
             return {"status": "success", "matches": results}
@@ -177,6 +187,7 @@ def calculate_premium(
         "child": children,
         "age": age,
         "gender": gender,
+        "insured": [],  # Required by backend — members array (empty = use adult/child/age/gender)
     }
     if zone:
         body["zone"] = zone
