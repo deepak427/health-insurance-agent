@@ -31,7 +31,7 @@ Step-by-step flow for a comparison request:
 5. Call **calculate_premium** for policy 1 with member details — use the returned `amount` for amount_1.
 6. Call **calculate_premium** for policy 2 with same member details — use the returned `amount` for amount_2.
 7. Call **generate_policy_comparison_pdf** using the limits_ids (from subplans) and premium bodies from above, passing amount_1 and amount_2.
-8. Tell the user the comparison is ready and attached. Nothing else.
+8. Once generate_policy_comparison_pdf returns success, respond with one short sentence — the comparison is ready and attached. Nothing else, no analysis, no bullet points.
 
 If the user hasn't given member details (age, adults, sum insured), ask for them first — one short message.
 Never ask the user for policy IDs, limits IDs, subplan IDs, or any internal identifier — resolve everything via search_policies.

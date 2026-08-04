@@ -12,19 +12,6 @@ from google.adk.tools import ToolContext
 _BACKEND = os.getenv("BACKEND_BASE_URL", "http://localhost:5000")
 _JWT = os.getenv("AGENT_JWT_TOKEN", "")
 
-# Logs go to stdout (visible in your terminal where you run `python main.py`)
-# and also to a file: hip/policy_compare.log
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(
-            os.path.join(os.path.dirname(__file__), "..", "..", "policy_compare.log"),
-            encoding="utf-8",
-        ),
-    ],
-)
 log = logging.getLogger("policy_compare")
 
 
@@ -51,24 +38,21 @@ def search_policies(query: str) -> dict:
           - policy_id, limits_id, name, company, subplans [{subplan_id, name}]
     """
     try:
-        log.info("search_policies | query=%r | url=%s/policy", query, _BACKEND)
         res = requests.get(
             f"{_BACKEND}/policy",
             params={"search": query, "limit": 5},
             headers=_auth_headers(),
             timeout=10,
         )
-        log.info("search_policies | status=%d", res.status_code)
         if res.status_code != 200:
-            log.error("search_policies | error body: %s", res.text[:300])
+            log.error("search_policies FAILED | status=%d | body=%s", res.status_code, res.text[:200])
             return {"status": "error", "message": f"hip-backend returned {res.status_code}"}
 
         data = res.json()
         policies = data.get("data", []) if isinstance(data, dict) else data
-        log.info("search_policies | total results from API: %d", len(policies))
 
         if not policies:
-            log.warning("search_policies | no matches for query=%r", query)
+            log.warning("search_policies NO RESULTS | query=%r", query)
             return {"status": "not_found", "message": f"No policies matched '{query}'."}
 
         results = []
@@ -84,7 +68,6 @@ def search_policies(query: str) -> dict:
                     "name": s.get("name", ""),
                     "limits_id": limits_id,
                 })
-
             results.append({
                 "policy_id": p.get("_id"),
                 "name": p.get("name"),
@@ -92,12 +75,11 @@ def search_policies(query: str) -> dict:
                 "subplans": subplans,
             })
 
-        log.info("search_policies | returning %d match(es): %s",
-                 len(results), [r["name"] for r in results])
+        log.info("search_policies OK | query=%r | matches=%s", query, [r["name"] for r in results])
         return {"status": "success", "matches": results}
 
     except Exception as e:
-        log.exception("search_policies | exception: %s", e)
+        log.exception("search_policies EXCEPTION | %s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -175,25 +157,20 @@ def calculate_premium(
         body["zone"] = zone
 
     try:
-        log.info("calculate_premium | policy=%s subplan=%s limit=%s age=%s adults=%d",
-                 policy_id, subplan_id, sum_insured, age, adults)
         res = requests.post(
             f"{_BACKEND}/premiumCalculator/calculate",
             json=body,
             headers=_auth_headers(),
             timeout=10,
         )
-        log.info("calculate_premium | status=%d", res.status_code)
         if res.status_code != 200:
-            log.error("calculate_premium | error body: %s", res.text[:300])
+            log.error("calculate_premium FAILED | status=%d | body=%s", res.status_code, res.text[:200])
             return {"status": "error", "message": f"hip-backend returned {res.status_code}: {res.text[:200]}"}
 
         data = res.json()
-        log.debug("calculate_premium | full response: %s", data)
         inner = data.get("data", {}) if isinstance(data, dict) else {}
-        log.debug("calculate_premium | inner keys: %s", list(inner.keys()) if isinstance(inner, dict) else inner)
         amount = inner.get("totalRateAmountWithGst") or inner.get("totalRateAmount") or 0
-        log.info("calculate_premium | amount=%s", amount)
+        log.info("calculate_premium OK | policy=%s | amount=%s", policy_id, amount)
 
         return {
             "status": "success",
@@ -201,7 +178,7 @@ def calculate_premium(
             "amount": amount,
         }
     except Exception as e:
-        log.exception("calculate_premium | exception: %s", e)
+        log.exception("calculate_premium EXCEPTION | %s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -246,28 +223,33 @@ async def generate_policy_comparison_pdf(
     }
 
     try:
-        log.info("generate_comparison_pdf | limits=[%s, %s] amounts=[%s, %s]",
-                 limits_id_1, limits_id_2, amount_1, amount_2)
+        log.info("generate_comparison_pdf CALLING HTML endpoint | limits=[%s, %s]", limits_id_1, limits_id_2)
         res = requests.post(
-            f"{_BACKEND}/limits/pdf_compare_premium_new",
+            f"{_BACKEND}/limits/pdf_compare_premium_new_html",
             json=payload,
             headers=_auth_headers(),
             timeout=30,
         )
-        log.info("generate_comparison_pdf | status=%d content-type=%s",
-                 res.status_code, res.headers.get("Content-Type", ""))
         if res.status_code != 200:
-            log.error("generate_comparison_pdf | error body: %s", res.text[:300])
+            log.error("generate_comparison_pdf HTML FAILED | status=%d | body=%s", res.status_code, res.text[:300])
             return {
                 "status": "error",
                 "message": f"hip-backend returned {res.status_code}: {res.text[:200]}",
             }
-        pdf_bytes = res.content
-        log.info("generate_comparison_pdf | pdf size=%d bytes", len(pdf_bytes))
+        html_content = res.text
+        log.info("generate_comparison_pdf HTML OK | length=%d chars", len(html_content))
 
     except Exception as e:
-        log.exception("generate_comparison_pdf | request failed: %s", e)
-        return {"status": "error", "message": f"Failed to generate PDF: {e}"}
+        log.exception("generate_comparison_pdf HTML EXCEPTION | %s", e)
+        return {"status": "error", "message": f"Failed to fetch comparison HTML: {e}"}
+
+    try:
+        from weasyprint import HTML as WeasyprintHTML
+        pdf_bytes = WeasyprintHTML(string=html_content, base_url=_BACKEND).write_pdf()
+        log.info("generate_comparison_pdf PDF OK | size=%d bytes", len(pdf_bytes))
+    except Exception as e:
+        log.exception("generate_comparison_pdf WEASYPRINT FAILED | %s", e)
+        return {"status": "error", "message": f"PDF conversion failed: {e}"}
 
     # Save as artifact — identical pattern to generate_insurance_summary_pdf
     artifact = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
