@@ -189,9 +189,9 @@ def calculate_premium(
             return {"status": "error", "message": f"hip-backend returned {res.status_code}: {res.text[:200]}"}
 
         data = res.json()
-        log.debug("calculate_premium | raw response keys: %s",
-                  list(data.get("data", data).keys()) if isinstance(data, dict) else type(data))
+        log.debug("calculate_premium | full response: %s", data)
         inner = data.get("data", {}) if isinstance(data, dict) else {}
+        log.debug("calculate_premium | inner keys: %s", list(inner.keys()) if isinstance(inner, dict) else inner)
         amount = inner.get("totalRateAmountWithGst") or inner.get("totalRateAmount") or 0
         log.info("calculate_premium | amount=%s", amount)
 
@@ -262,26 +262,32 @@ async def generate_policy_comparison_pdf(
                 "message": f"hip-backend returned {res.status_code}: {res.text[:200]}",
             }
         html_content = res.text
-        log.info("generate_comparison_pdf | html length=%d chars", len(html_content))
+        log.info("generate_comparison_pdf | html length=%d chars | preview: %s",
+                 len(html_content), html_content[:200])
 
     except Exception as e:
         log.exception("generate_comparison_pdf | html fetch exception: %s", e)
         return {"status": "error", "message": f"Failed to fetch comparison HTML: {e}"}
 
-    # Convert HTML → PDF
+    # Convert HTML → PDF (WeasyPrint requires GTK libs — available on Linux/EC2)
+    # Falls back to saving raw HTML if running on Windows without GTK
     try:
         from weasyprint import HTML
         pdf_bytes = HTML(string=html_content, base_url=_BACKEND).write_pdf()
+        mime_type = "application/pdf"
+        filename_ext = "pdf"
         log.info("generate_comparison_pdf | pdf size=%d bytes", len(pdf_bytes))
     except Exception as e:
-        log.exception("generate_comparison_pdf | weasyprint failed: %s", e)
-        return {"status": "error", "message": f"PDF conversion failed: {e}"}
+        log.warning("generate_comparison_pdf | weasyprint unavailable (%s) — saving as HTML instead", e)
+        pdf_bytes = html_content.encode("utf-8")
+        mime_type = "text/html"
+        filename_ext = "html"
 
     # Save as artifact — identical pattern to generate_insurance_summary_pdf
-    artifact = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
+    artifact = types.Part.from_bytes(data=pdf_bytes, mime_type=mime_type)
     p1_name = (premium_body_1.get("policy") or "policy1")[-6:]
     p2_name = (premium_body_2.get("policy") or "policy2")[-6:]
-    filename = f"comparison_{p1_name}_vs_{p2_name}.pdf"
+    filename = f"comparison_{p1_name}_vs_{p2_name}.{filename_ext}"
 
     try:
         version = await tool_context.save_artifact(filename=filename, artifact=artifact)
