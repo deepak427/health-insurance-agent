@@ -12,6 +12,7 @@ from google.adk.tools import ToolContext
 _BACKEND = os.getenv("BACKEND_BASE_URL", "http://localhost:5000")
 _JWT = os.getenv("AGENT_JWT_TOKEN", "")
 
+logging.basicConfig(level=logging.INFO, format="%(name)s | %(levelname)s | %(message)s")
 log = logging.getLogger("policy_compare")
 
 
