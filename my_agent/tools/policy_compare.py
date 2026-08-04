@@ -29,58 +29,72 @@ def search_policies(query: str) -> dict:
     before calling calculate_premium or generate_policy_comparison_pdf.
 
     Always call this first when the user mentions a policy by name.
+    Tries progressively shorter search terms if the full query returns nothing.
 
     Args:
         query: Policy or company name (e.g. "Star", "HDFC Ergo").
 
     Returns:
         dict with matching policies, each containing:
-          - policy_id, limits_id, name, company, subplans [{subplan_id, name}]
+          - policy_id, name, company, subplans [{subplan_id, name, limits_id}]
     """
-    try:
-        res = requests.get(
-            f"{_BACKEND}/policy",
-            params={"search": query, "limit": 5},
-            headers=_auth_headers(),
-            timeout=10,
-        )
-        if res.status_code != 200:
-            log.error("search_policies FAILED | status=%d | body=%s", res.status_code, res.text[:200])
-            return {"status": "error", "message": f"hip-backend returned {res.status_code}"}
+    # Build a list of search terms to try: full query first, then each word
+    terms = [query.strip()]
+    for word in query.strip().split():
+        if word not in terms and len(word) > 3:
+            terms.append(word)
 
-        data = res.json()
-        policies = data.get("data", []) if isinstance(data, dict) else data
+    for term in terms:
+        try:
+            res = requests.get(
+                f"{_BACKEND}/policy",
+                params={"search": term, "limit": 5},
+                headers=_auth_headers(),
+                timeout=10,
+            )
+            if res.status_code != 200:
+                log.error("search_policies FAILED | status=%d | body=%s", res.status_code, res.text[:200])
+                return {"status": "error", "message": f"hip-backend returned {res.status_code}"}
 
-        if not policies:
-            log.warning("search_policies NO RESULTS | query=%r", query)
-            return {"status": "not_found", "message": f"No policies matched '{query}'."}
+            data = res.json()
+            policies = data.get("data", []) if isinstance(data, dict) else data
 
-        results = []
-        for p in policies[:3]:
-            company_raw = p.get("companyId") or {}
-            subpolicies = p.get("subPolicies") or []
-            subplans = []
-            for s in subpolicies:
-                sub_limits = s.get("limits") or []
-                limits_id = sub_limits[0].get("_id") if sub_limits else None
-                subplans.append({
-                    "subplan_id": s.get("_id"),
-                    "name": s.get("name", ""),
-                    "limits_id": limits_id,
+            if not policies:
+                log.warning("search_policies NO RESULTS | query=%r", term)
+                continue
+
+            results = []
+            for p in policies[:3]:
+                company_raw = p.get("companyId") or {}
+                subpolicies = p.get("subPolicies") or []
+                subplans = []
+                for s in subpolicies:
+                    sub_limits = s.get("limits") or []
+                    limits_id = sub_limits[0].get("_id") if sub_limits else None
+                    subplans.append({
+                        "subplan_id": s.get("_id"),
+                        "name": s.get("name", ""),
+                        "limits_id": limits_id,
+                    })
+                results.append({
+                    "policy_id": p.get("_id"),
+                    "name": p.get("name"),
+                    "company": company_raw.get("name", "") if isinstance(company_raw, dict) else "",
+                    "subplans": subplans,
                 })
-            results.append({
-                "policy_id": p.get("_id"),
-                "name": p.get("name"),
-                "company": company_raw.get("name", "") if isinstance(company_raw, dict) else "",
-                "subplans": subplans,
-            })
 
-        log.info("search_policies OK | query=%r | matches=%s", query, [r["name"] for r in results])
-        return {"status": "success", "matches": results}
+            log.info("search_policies OK | term=%r | matches=%s", term, [r["name"] for r in results])
+            return {"status": "success", "matches": results}
 
-    except Exception as e:
-        log.exception("search_policies EXCEPTION | %s", e)
-        return {"status": "error", "message": str(e)}
+        except Exception as e:
+            log.exception("search_policies EXCEPTION | %s", e)
+            return {"status": "error", "message": str(e)}
+
+    log.warning("search_policies NOT FOUND | all terms exhausted for query=%r", query)
+    return {
+        "status": "not_found",
+        "message": f"No policy matching '{query}' found in our system. Tell the user this policy is not available and ask if they want to try a different one.",
+    }
 
 
 def get_policy_limits(policy_id: str) -> dict:
