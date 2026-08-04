@@ -148,7 +148,7 @@ def calculate_premium(
         policy_id:    MongoDB ObjectID of the policy.
         subplan_id:   MongoDB ObjectID of the subplan.
         sum_insured:  Coverage amount in INR (e.g. 500000 for 5 lakh).
-        period:       Policy period in years as string: "1", "2", or "3".
+        period:       Policy period in years as string: "1", "2", or "3" (tool auto-converts to "1 Year" etc.).
         adults:       Number of adults to cover.
         children:     Number of children to cover.
         age:          Age of the oldest adult as string (e.g. "35").
@@ -158,11 +158,21 @@ def calculate_premium(
     Returns:
         dict with 'premium_body' ready for the comparison tool, plus the final premium amount.
     """
+    # Backend expects "1 Year", "2 Years", "3 Years" format, not just "1", "2", "3"
+    period_map = {
+        "1": "1 Year",
+        "2": "2 Years",
+        "3": "3 Years",
+        "4": "4 Years",
+        "5": "5 Years",
+    }
+    formatted_period = period_map.get(period.strip(), period)  # fallback to original if already formatted
+    
     body = {
         "policy": policy_id,
         "subplan": subplan_id,
         "limit": sum_insured,
-        "period": period,
+        "period": formatted_period,
         "adult": adults,
         "child": children,
         "age": age,
@@ -236,7 +246,7 @@ async def generate_policy_comparison_pdf(
     payload = {
         "type": "multiple",
         "limits": [limits_id_1, limits_id_2],
-        "actualPeriod": premium_body_1.get("period", "1"),
+        "actualPeriod": premium_body_1.get("period", "1 Year"),
         "amount": [amount_1, amount_2],
         "bank": [
             "000000000000000000000000000000",
