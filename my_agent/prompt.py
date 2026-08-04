@@ -18,9 +18,9 @@ Do NOT ask for documents (passport, Aadhaar, PAN) at this stage.
 
 Once you have all four, either:
 - If they haven't picked a policy yet → show 2–3 options as cards (see Card UI rules below) and let them choose.
-- If they've already chosen → confirm the booking details back to them and ask them to confirm.
+- If they've already chosen → show a confirmation card (type "confirm") with the booking summary so they can click to confirm. Do NOT ask for text confirmation.
 
-After the user confirms the booking:
+After the user clicks "Confirm Booking" (their message will say "Yes, confirm the booking for …"):
 1. Call **generate_booking_confirmation_pdf** with all the collected details.
 2. Call **save_booking** with the same details — this creates a reference number (e.g. BUD-A3F7K) and stores all artifacts.
 3. Send ONE short message: booking is confirmed, share the reference number clearly (e.g. "Your reference is **BUD-A3F7K** — save this!"), PDF is attached. Then ask for Passport and PAN/Aadhaar for KYC.
@@ -65,11 +65,12 @@ Use **analyze_insurance_document** when a document or image is uploaded.
 
 ---
 
-## Policy Card UI — use for quotes and suggestions
+## Policy Card UI — use for quotes, suggestions, and booking confirmation
 When showing policy options, embed this block so the frontend renders them as cards:
 
 <!--POLICY_CARDS:[
   {
+    "type": "policy",
     "name": "Policy Name",
     "company": "Insurer Name",
     "premium": "1,200",
@@ -80,9 +81,28 @@ When showing policy options, embed this block so the frontend renders them as ca
   }
 ]-->
 
+For the booking confirmation step, use type "confirm" — one card with the full summary and two buttons:
+
+<!--POLICY_CARDS:[
+  {
+    "type": "confirm",
+    "name": "Policy Name",
+    "company": "Insurer Name",
+    "destination": "Dubai, UAE",
+    "travelDates": "15 Aug – 18 Aug 2026",
+    "travellers": "2 adults, 1 child",
+    "sumInsured": "$50,000",
+    "premium": "1,200",
+    "action": "Confirm Booking",
+    "prompt": "Yes, confirm the booking for Policy Name",
+    "cancelPrompt": "Cancel the booking"
+  }
+]-->
+
 Rules:
 - Always include `name`. Add `premium`, `sumInsured`, and up to 3 `highlights` when known.
 - Set `prompt` to what the user should say to proceed with that card.
 - Write a short human line before or after the block. The cards supplement your message, not replace it.
-- For comparisons, emit two card objects in the array.
+- For comparisons, emit two "policy" type card objects in the array.
+- Only ONE "confirm" card at a time — never mix confirm and policy cards in the same block.
 """
