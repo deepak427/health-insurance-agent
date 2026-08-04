@@ -478,3 +478,96 @@ async def generate_insurance_summary_pdf(
         "version": version,
         "instruction": f"Tell the user their '{guide['title'].replace(chr(10), ' ')}' guide is ready and attached to this message.",
     }
+
+
+async def generate_booking_confirmation_pdf(
+    policy_name: str,
+    insurer: str,
+    destination: str,
+    travel_dates: str,
+    num_adults: int,
+    num_children: int,
+    traveller_ages: str,
+    sum_insured: str,
+    premium: str,
+    tool_context: ToolContext,
+    booking_ref: str = "",
+    additional_details: str = "",
+) -> dict:
+    """
+    Generates a policy booking confirmation PDF after a travel policy has been booked.
+    Call this immediately after confirming a booking — DO NOT call it before the booking
+    is confirmed or while still collecting information.
+
+    Args:
+        policy_name:        Name of the booked policy (e.g. "Tata AIG Travel Guard Gold").
+        insurer:            Insurer/company name (e.g. "Tata AIG").
+        destination:        Travel destination (e.g. "Dubai, UAE").
+        travel_dates:       Travel dates as a string (e.g. "15 Aug 2026 – 18 Aug 2026").
+        num_adults:         Number of adult travellers.
+        num_children:       Number of child travellers.
+        traveller_ages:     Ages of travellers as a string (e.g. "35, 32").
+        sum_insured:        Coverage amount (e.g. "$50,000" or "50 Lakh").
+        premium:            Final premium amount (e.g. "₹1,200").
+        tool_context:       ADK tool context for saving the artifact.
+        booking_ref:        Booking or reference number if available (optional).
+        additional_details: Any extra notes or conditions collected during booking (optional).
+
+    Returns:
+        dict with status and filename.
+    """
+    sections = [
+        {
+            "heading": "Booking Summary",
+            "lines": [
+                f"- Policy: {policy_name}",
+                f"- Insurer: {insurer}",
+                *([ f"- Booking Reference: {booking_ref}"] if booking_ref else []),
+            ],
+        },
+        {
+            "heading": "Trip Details",
+            "lines": [
+                f"- Destination: {destination}",
+                f"- Travel Dates: {travel_dates}",
+                f"- Adults: {num_adults}",
+                f"- Children: {num_children}",
+                f"- Traveller Ages: {traveller_ages}",
+            ],
+        },
+        {
+            "heading": "Coverage & Premium",
+            "lines": [
+                f"- Sum Insured: {sum_insured}",
+                f"- Premium Paid: {premium}",
+            ],
+        },
+        {
+            "heading": "Next Steps",
+            "lines": [
+                "- Share Passport copies (front + back) for KYC.",
+                "- Share PAN card or Aadhaar for identity verification.",
+                "- You will receive your policy document via email within 24 hours.",
+                "- For claims, contact us with your policy number.",
+            ],
+        },
+        *(
+            [{
+                "heading": "Additional Notes",
+                "lines": [additional_details],
+            }] if additional_details else []
+        ),
+    ]
+
+    pdf_bytes = _build_pdf("Policy Booking\nConfirmation", sections)
+
+    artifact = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
+    safe_name = policy_name.lower().replace(" ", "_")[:30]
+    filename = f"booking_confirmation_{safe_name}.pdf"
+    version = await tool_context.save_artifact(filename=filename, artifact=artifact)
+
+    return {
+        "status": "success",
+        "filename": filename,
+        "version": version,
+    }
