@@ -183,6 +183,7 @@ def calculate_premium(
             return {"status": "error", "message": f"hip-backend returned {res.status_code}: {res.text[:200]}"}
 
         data = res.json()
+        log.info("calculate_premium RESPONSE | %s", data)
         inner = data.get("data", {}) if isinstance(data, dict) else {}
         amount = inner.get("totalRateAmountWithGst") or inner.get("totalRateAmount") or 0
         log.info("calculate_premium OK | policy=%s | amount=%s", policy_id, amount)
