@@ -547,8 +547,7 @@ async def generate_booking_confirmation_pdf(
             "lines": [
                 "- Share Passport copies (front + back) for KYC.",
                 "- Share PAN card or Aadhaar for identity verification.",
-                "- You will receive your policy document via email within 24 hours.",
-                "- For claims, contact us with your policy number.",
+                "- For any claims or support, reach out with your policy number.",
             ],
         },
         *(
