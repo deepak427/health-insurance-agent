@@ -182,6 +182,7 @@ def calculate_premium(
         body["zone"] = zone
 
     try:
+        log.info("calculate_premium REQUEST | body=%s", body)
         res = requests.post(
             f"{_BACKEND}/premiumCalculator/calculate",
             json=body,
