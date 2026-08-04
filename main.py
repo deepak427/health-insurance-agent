@@ -17,6 +17,9 @@ from google.adk.cli.utils.service_factory import create_artifact_service_from_op
 from data.store import load, save, FILES
 
 load_dotenv()
+# Also load agent-level env so BACKEND_BASE_URL / AGENT_JWT_TOKEN are available
+_agent_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), "my_agent", ".env")
+load_dotenv(_agent_env, override=False)
 
 AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 

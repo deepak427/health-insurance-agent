@@ -33,7 +33,7 @@ def get_policy_limits(policy_id: str) -> dict:
     """
     try:
         res = requests.get(
-            f"{_BACKEND}/limits/{policy_id}",
+            f"{_BACKEND}/limit/{policy_id}",
             headers=_auth_headers(),
             timeout=10,
         )
@@ -152,7 +152,7 @@ async def generate_policy_comparison_pdf(
 
     try:
         res = requests.post(
-            f"{_BACKEND}/limits/pdf_compare_premium_new_html",
+            f"{_BACKEND}/limit/pdf_compare_premium_new_html",
             json=payload,
             headers=_auth_headers(),
             timeout=30,
