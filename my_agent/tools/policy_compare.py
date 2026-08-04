@@ -19,6 +19,66 @@ def _auth_headers() -> dict:
     }
 
 
+def search_policies(query: str) -> dict:
+    """
+    Searches health insurance policies by name using the backend search API.
+    Use this to resolve a policy name to its policy_id, limits_id, and subplans
+    before calling calculate_premium or generate_policy_comparison_pdf.
+
+    Always call this first when the user mentions a policy by name.
+
+    Args:
+        query: Policy or company name (e.g. "Star", "HDFC Ergo").
+
+    Returns:
+        dict with matching policies, each containing:
+          - policy_id, limits_id, name, company, subplans [{subplan_id, name}]
+    """
+    try:
+        res = requests.get(
+            f"{_BACKEND}/policy",
+            params={"search": query, "limit": 5},
+            headers=_auth_headers(),
+            timeout=10,
+        )
+        if res.status_code != 200:
+            return {"status": "error", "message": f"hip-backend returned {res.status_code}"}
+
+        data = res.json()
+        policies = data.get("data", []) if isinstance(data, dict) else data
+
+        if not policies:
+            return {"status": "not_found", "message": f"No policies matched '{query}'."}
+
+        results = []
+        for p in policies[:3]:  # cap — agent only needs the top match
+            company_raw = p.get("companyId") or {}
+
+            # limits_id lives inside subPolicies[n].limits[0]._id (confirmed from API response)
+            subpolicies = p.get("subPolicies") or []
+            subplans = []
+            for s in subpolicies:
+                sub_limits = s.get("limits") or []
+                limits_id = sub_limits[0].get("_id") if sub_limits else None
+                subplans.append({
+                    "subplan_id": s.get("_id"),
+                    "name": s.get("name", ""),
+                    "limits_id": limits_id,
+                })
+
+            results.append({
+                "policy_id": p.get("_id"),
+                "name": p.get("name"),
+                "company": company_raw.get("name", "") if isinstance(company_raw, dict) else "",
+                "subplans": subplans,
+            })
+
+        return {"status": "success", "matches": results}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 def get_policy_limits(policy_id: str) -> dict:
     """
     Fetches the limits document for a given policy ID from hip-backend.
@@ -62,7 +122,8 @@ def calculate_premium(
 ) -> dict:
     """
     Calculates a live premium quote from hip-backend for a specific policy
-    and member configuration. Returns the full premiumBody needed for comparison.
+    and member configuration. Returns the premium amount and the premiumBody
+    needed for generate_policy_comparison_pdf.
 
     Args:
         policy_id:    MongoDB ObjectID of the policy.
@@ -76,7 +137,7 @@ def calculate_premium(
         zone:         Geographic zone string if applicable (optional).
 
     Returns:
-        dict with 'premium_body' ready for the comparison tool, plus calculated amounts.
+        dict with 'premium_body' ready for the comparison tool, plus the final premium amount.
     """
     body = {
         "policy": policy_id,
@@ -101,10 +162,15 @@ def calculate_premium(
         if res.status_code != 200:
             return {"status": "error", "message": f"hip-backend returned {res.status_code}: {res.text[:200]}"}
         data = res.json()
+        inner = data.get("data", {}) if isinstance(data, dict) else {}
+
+        # Confirmed field from API: totalRateAmountWithGst is the final amount inc. GST
+        amount = inner.get("totalRateAmountWithGst") or inner.get("totalRateAmount") or 0
+
         return {
             "status": "success",
             "premium_body": body,
-            "quote": data,
+            "amount": amount,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -190,6 +256,5 @@ async def generate_policy_comparison_pdf(
         "status": "success",
         "filename": filename,
         "version": version,
-        "size_bytes": len(pdf_bytes),
         "instruction": "Tell the user their policy comparison is ready and attached — they can download it now.",
     }

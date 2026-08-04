@@ -28,7 +28,6 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
         "status": "success",
         "filename": filename,
         "mime_type": inline.mime_type,
-        "size_bytes": len(inline.data),
         "message": "Document loaded. Analyze its contents for coverage, exclusions, premiums, and key dates.",
         "artifact": artifact,
     }

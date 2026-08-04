@@ -474,9 +474,7 @@ async def generate_insurance_summary_pdf(
 
     return {
         "status": "success",
-        "message": "PDF guide generated and saved.",
         "filename": filename,
         "version": version,
-        "size_bytes": len(pdf_bytes),
         "instruction": f"Tell the user their '{guide['title'].replace(chr(10), ' ')}' guide is ready and attached to this message.",
     }

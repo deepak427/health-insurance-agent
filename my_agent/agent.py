@@ -11,7 +11,7 @@ from .tools import (
     get_claim_filing_steps,
     analyze_insurance_document,
     generate_insurance_summary_pdf,
-    get_policy_limits,
+    search_policies,
     calculate_premium,
     generate_policy_comparison_pdf,
 )
@@ -73,7 +73,7 @@ root_agent = Agent(
         get_claim_filing_steps,
         analyze_insurance_document,
         generate_insurance_summary_pdf,
-        get_policy_limits,
+        search_policies,
         calculate_premium,
         generate_policy_comparison_pdf,
         LoadArtifactsTool(),
