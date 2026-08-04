@@ -249,45 +249,31 @@ async def generate_policy_comparison_pdf(
         log.info("generate_comparison_pdf | limits=[%s, %s] amounts=[%s, %s]",
                  limits_id_1, limits_id_2, amount_1, amount_2)
         res = requests.post(
-            f"{_BACKEND}/limit/pdf_compare_premium_new_html",
+            f"{_BACKEND}/limits/pdf_compare_premium_new",
             json=payload,
             headers=_auth_headers(),
             timeout=30,
         )
-        log.info("generate_comparison_pdf | html fetch status=%d", res.status_code)
+        log.info("generate_comparison_pdf | status=%d content-type=%s",
+                 res.status_code, res.headers.get("Content-Type", ""))
         if res.status_code != 200:
             log.error("generate_comparison_pdf | error body: %s", res.text[:300])
             return {
                 "status": "error",
                 "message": f"hip-backend returned {res.status_code}: {res.text[:200]}",
             }
-        html_content = res.text
-        log.info("generate_comparison_pdf | html length=%d chars | preview: %s",
-                 len(html_content), html_content[:200])
-
-    except Exception as e:
-        log.exception("generate_comparison_pdf | html fetch exception: %s", e)
-        return {"status": "error", "message": f"Failed to fetch comparison HTML: {e}"}
-
-    # Convert HTML → PDF (WeasyPrint requires GTK libs — available on Linux/EC2)
-    # Falls back to saving raw HTML if running on Windows without GTK
-    try:
-        from weasyprint import HTML
-        pdf_bytes = HTML(string=html_content, base_url=_BACKEND).write_pdf()
-        mime_type = "application/pdf"
-        filename_ext = "pdf"
+        pdf_bytes = res.content
         log.info("generate_comparison_pdf | pdf size=%d bytes", len(pdf_bytes))
+
     except Exception as e:
-        log.warning("generate_comparison_pdf | weasyprint unavailable (%s) — saving as HTML instead", e)
-        pdf_bytes = html_content.encode("utf-8")
-        mime_type = "text/html"
-        filename_ext = "html"
+        log.exception("generate_comparison_pdf | request failed: %s", e)
+        return {"status": "error", "message": f"Failed to generate PDF: {e}"}
 
     # Save as artifact — identical pattern to generate_insurance_summary_pdf
-    artifact = types.Part.from_bytes(data=pdf_bytes, mime_type=mime_type)
+    artifact = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
     p1_name = (premium_body_1.get("policy") or "policy1")[-6:]
     p2_name = (premium_body_2.get("policy") or "policy2")[-6:]
-    filename = f"comparison_{p1_name}_vs_{p2_name}.{filename_ext}"
+    filename = f"comparison_{p1_name}_vs_{p2_name}.pdf"
 
     try:
         version = await tool_context.save_artifact(filename=filename, artifact=artifact)
@@ -298,5 +284,4 @@ async def generate_policy_comparison_pdf(
         "status": "success",
         "filename": filename,
         "version": version,
-        "instruction": "Tell the user their policy comparison is ready and attached — they can download it now.",
     }
