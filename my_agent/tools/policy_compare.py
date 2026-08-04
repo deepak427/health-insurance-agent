@@ -184,6 +184,14 @@ def calculate_premium(
 
         data = res.json()
         log.info("calculate_premium RESPONSE | %s", data)
+
+        # API returns errors as HTTP 200 with code:400 in body
+        body_code = data.get("code") if isinstance(data, dict) else None
+        if body_code and body_code != 200:
+            msg = data.get("msg") or data.get("message") or "Premium not available"
+            log.error("calculate_premium BODY ERROR | code=%s | msg=%s", body_code, msg)
+            return {"status": "error", "message": msg}
+
         inner = data.get("data", {}) if isinstance(data, dict) else {}
         amount = inner.get("totalRateAmountWithGst") or inner.get("totalRateAmount") or 0
         log.info("calculate_premium OK | policy=%s | amount=%s", policy_id, amount)
