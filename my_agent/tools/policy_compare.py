@@ -225,7 +225,7 @@ async def generate_policy_comparison_pdf(
     try:
         log.info("generate_comparison_pdf CALLING HTML endpoint | limits=[%s, %s]", limits_id_1, limits_id_2)
         res = requests.post(
-            f"{_BACKEND}/limits/pdf_compare_premium_new_html",
+            f"{_BACKEND}/limit/pdf_compare_premium_new_html",
             json=payload,
             headers=_auth_headers(),
             timeout=30,
