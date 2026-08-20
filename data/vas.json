@@ -4,7 +4,11 @@
     "description": "24/7 access to a certified doctor via phone or video call from anywhere in the world",
     "categories": ["medical", "health", "travel"],
     "price_flat": 299,
-    "highlights": ["Unlimited consultations during trip", "Available in 10+ languages", "Prescription assistance abroad", "Valid for entire travel duration"],
+    "highlights": ["Unlimited consultations during trip", "Available in 10+ languages", "Prescription assistance abroad"],
+    "provider": "MedAssist Global Network",
+    "availability": "24/7",
+    "response_time": "Immediate",
+    "coverage_scope": "Worldwide",
     "suitable_for": "All travellers — especially families and senior citizens"
   },
   "air_ambulance": {
@@ -12,15 +16,23 @@
     "description": "Emergency medical evacuation by air to the nearest suitable hospital or back home",
     "categories": ["medical", "emergency", "travel"],
     "price_flat": 999,
-    "highlights": ["Worldwide coverage", "Medical team on board", "Coordination with local hospitals", "Repatriation to home country if needed"],
+    "highlights": ["Medical team on board", "Repatriation to home country if needed", "Coordination with local hospitals"],
+    "provider": "SkyMed International",
+    "availability": "24/7",
+    "response_time": "Within 4 hours (subject to airspace clearance)",
+    "coverage_scope": "Worldwide",
     "suitable_for": "Travellers visiting remote areas or countries with poor medical infrastructure"
   },
   "travel_concierge": {
     "name": "Travel Concierge",
-    "description": "Dedicated 24/7 concierge support for bookings, emergencies, and travel assistance",
+    "description": "Dedicated 24/7 support for bookings, emergencies, and on-ground travel assistance",
     "categories": ["travel", "assistance", "concierge"],
     "price_flat": 199,
-    "highlights": ["Hotel & restaurant bookings", "Emergency cash transfer assistance", "Lost passport & document support", "Local translator on demand"],
+    "highlights": ["Hotel & restaurant bookings", "Emergency cash transfer assistance", "Local translator on demand"],
+    "provider": "Dolphin Assist Team",
+    "availability": "24/7",
+    "response_time": "Within 15 minutes",
+    "coverage_scope": "Worldwide",
     "suitable_for": "Business travellers and first-time international travellers"
   },
   "roadside_assistance": {
@@ -28,7 +40,11 @@
     "description": "On-ground vehicle breakdown and roadside help at your travel destination",
     "categories": ["travel", "vehicle", "car"],
     "price_flat": 149,
-    "highlights": ["Towing up to 50km", "Flat tyre & battery jump-start", "Emergency fuel delivery", "Available 24/7"],
+    "highlights": ["Towing up to 50km", "Flat tyre & battery jump-start", "Emergency fuel delivery"],
+    "provider": "AutoAssist Partners",
+    "availability": "24/7",
+    "response_time": "Within 1 hour",
+    "coverage_scope": "India & GCC countries",
     "suitable_for": "Travellers planning road trips or hiring rental cars"
   },
   "mental_health_support": {
@@ -36,7 +52,11 @@
     "description": "Access to licensed therapists and counsellors via phone or video during your trip",
     "categories": ["health", "wellness", "mental"],
     "price_flat": 249,
-    "highlights": ["Up to 3 sessions during trip", "Anxiety, stress & crisis support", "Confidential & secure", "Available in multiple languages"],
+    "highlights": ["Up to 3 sessions during trip", "Anxiety, stress & crisis support", "Confidential & secure"],
+    "provider": "CalmCare Therapist Network",
+    "availability": "Mon–Sat, 8am–10pm IST",
+    "response_time": "Appointment within 2 hours",
+    "coverage_scope": "Worldwide (video call)",
     "suitable_for": "Solo travellers, long-stay travellers, or those prone to travel anxiety"
   },
   "emergency_cash": {
@@ -44,7 +64,11 @@
     "description": "Same-day emergency cash transfer if you lose your wallet or are robbed abroad",
     "categories": ["financial", "emergency", "travel"],
     "price_flat": 99,
-    "highlights": ["Transfer up to $500 within 4 hours", "Available in 150+ countries", "No repayment needed — covered service", "One claim per trip"],
+    "highlights": ["Transfer up to $500 within 4 hours", "Available in 150+ countries", "One claim per trip"],
+    "provider": "Western Union Partnership",
+    "availability": "24/7",
+    "response_time": "Within 4 hours",
+    "coverage_scope": "150+ countries",
     "suitable_for": "All international travellers"
   },
   "visa_assistance": {
@@ -52,7 +76,11 @@
     "description": "Expert guidance and documentation support for visa applications and entry requirements",
     "categories": ["visa", "documentation", "travel"],
     "price_flat": 199,
-    "highlights": ["Visa application review & checklist", "Real-time entry requirement updates", "Cover letter templates", "Embassy appointment reminders"],
+    "highlights": ["Visa application review & checklist", "Real-time entry requirement updates", "Embassy appointment reminders"],
+    "provider": "Dolphin Docs Team",
+    "availability": "Mon–Fri, 9am–7pm IST",
+    "response_time": "Within 1 business day",
+    "coverage_scope": "All destinations",
     "suitable_for": "Travellers applying for complex visas (Schengen, US, UK)"
   },
   "lounge_access": {
@@ -60,15 +88,23 @@
     "description": "Single-visit airport lounge access at departure and arrival airports",
     "categories": ["travel", "airport", "comfort"],
     "price_flat": 349,
-    "highlights": ["Access at 1,300+ lounges worldwide", "Covers departure & one stopover", "Includes food, Wi-Fi & shower", "Companion access available"],
+    "highlights": ["Access at 1,300+ lounges worldwide", "Includes food, Wi-Fi & shower", "Covers departure & one stopover"],
+    "provider": "DragonPass Network",
+    "availability": "Airport lounge hours",
+    "response_time": "Instant digital pass",
+    "coverage_scope": "1,300+ airports worldwide",
     "suitable_for": "Long-haul or business travellers wanting comfort during layovers"
   },
   "pharmacy_delivery": {
     "name": "Pharmacy on Demand",
-    "description": "Same-day prescription medicine delivery to your hotel anywhere in major cities",
+    "description": "Same-day prescription medicine delivery to your hotel in major cities",
     "categories": ["medical", "health", "travel"],
     "price_flat": 179,
-    "highlights": ["Delivery within 4 hours in 50+ cities", "Licensed pharmacists available", "Handles local prescription translation", "Cold-chain medicines supported"],
+    "highlights": ["Delivery within 4 hours in 50+ cities", "Licensed pharmacists available", "Cold-chain medicines supported"],
+    "provider": "MedExpress Delivery",
+    "availability": "8am–10pm local time",
+    "response_time": "Within 4 hours",
+    "coverage_scope": "50+ major cities globally",
     "suitable_for": "Travellers on regular medication or with chronic conditions"
   },
   "repatriation_remains": {
@@ -76,7 +112,11 @@
     "description": "Covers the full cost of repatriating mortal remains to the home country in the event of death abroad",
     "categories": ["emergency", "repatriation", "travel"],
     "price_flat": 499,
-    "highlights": ["Full repatriation cost covered", "Documentation & legal coordination", "Liaison with local authorities", "Family notification support"],
+    "highlights": ["Full repatriation cost covered", "Documentation & legal coordination", "Family notification support"],
+    "provider": "Global Repatriation Services",
+    "availability": "24/7",
+    "response_time": "Coordination begins within 2 hours",
+    "coverage_scope": "Worldwide",
     "suitable_for": "Elderly travellers or those with serious medical conditions"
   }
 }

@@ -15,7 +15,7 @@ from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.cli.service_registry import get_service_registry
 from google.adk.cli.utils.service_factory import create_artifact_service_from_options
 from data.store import load, save, FILES
-from data.bookings import get_booking, create_booking
+from data.bookings import get_booking, create_booking, update_booking
 
 load_dotenv()
 # Also load agent-level env so we have access to agent settings
@@ -162,6 +162,38 @@ def list_bookings_endpoint(user_id: str = None):
         bookings.append(d)
     
     return {"bookings": bookings}
+
+
+@app.put("/bookings/{ref_number}", summary="Update booking details")
+async def update_booking_endpoint(ref_number: str, request: Request):
+    booking = get_booking(ref_number)
+    if not booking:
+        raise HTTPException(status_code=404, detail=f"Booking {ref_number} not found")
+    if booking.get("status") == "cancelled":
+        raise HTTPException(status_code=400, detail="Cannot edit a cancelled booking")
+    body = await request.json()
+    allowed = {"destination", "travel_dates", "num_adults", "num_children",
+               "traveller_ages", "sum_insured", "premium", "notes"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    updated = update_booking(ref_number, **updates)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Update failed")
+    return get_booking(ref_number)
+
+
+@app.delete("/bookings/{ref_number}", summary="Soft-cancel a booking")
+def cancel_booking_endpoint(ref_number: str):
+    booking = get_booking(ref_number)
+    if not booking:
+        raise HTTPException(status_code=404, detail=f"Booking {ref_number} not found")
+    if booking.get("status") == "cancelled":
+        raise HTTPException(status_code=400, detail="Booking is already cancelled")
+    updated = update_booking(ref_number, status="cancelled")
+    if not updated:
+        raise HTTPException(status_code=500, detail="Cancel failed")
+    return {"status": "cancelled", "ref_number": ref_number}
 
 
 if __name__ == "__main__":
