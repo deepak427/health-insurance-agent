@@ -164,6 +164,45 @@ def list_bookings_endpoint(user_id: str = None):
     return {"bookings": bookings}
 
 
+@app.get(
+    "/download-artifact/{app_name}/{user_id}/{filename:path}",
+    summary="Download an artifact by scanning all sessions for the user (session-agnostic fallback)",
+)
+async def download_artifact_by_user(app_name: str, user_id: str, filename: str):
+    """
+    Finds and serves an artifact without requiring a session_id.
+    Scans all sessions for the given user until the artifact is found.
+    Used by the My Policies panel where session_id may not be stored.
+    """
+    import pathlib
+
+    # Local storage path: {base_dir}/my_agent/.adk/artifacts/apps/{app_name}/users/{user_id}/sessions/*/artifacts/{filename}/versions/0/
+    base = pathlib.Path(AGENT_DIR) / "my_agent" / ".adk" / "artifacts" / "apps" / app_name / "users" / user_id / "sessions"
+
+    if base.exists():
+        for session_dir in base.iterdir():
+            if not session_dir.is_dir():
+                continue
+            session_id = session_dir.name
+            artifact = await _artifact_svc.load_artifact(
+                app_name=app_name,
+                user_id=user_id,
+                session_id=session_id,
+                filename=filename,
+            )
+            if artifact and artifact.inline_data:
+                inline = artifact.inline_data
+                raw = bytes(inline.data) if isinstance(inline.data, (bytes, bytearray)) else base64.b64decode(inline.data)
+                mime = inline.mime_type or "application/octet-stream"
+                return Response(
+                    content=raw,
+                    media_type=mime,
+                    headers={"Content-Disposition": f'inline; filename="{filename}"'},
+                )
+
+    raise HTTPException(status_code=404, detail=f"Artifact '{filename}' not found for user '{user_id}'")
+
+
 @app.put("/bookings/{ref_number}", summary="Update booking details")
 async def update_booking_endpoint(ref_number: str, request: Request):
     booking = get_booking(ref_number)
