@@ -105,8 +105,28 @@ async def apply_vas_to_booking(
         vas_cost += cost
         vas_details.append({"key": key, "name": svc["name"], "cost": cost})
 
-    # Merge with existing notes — VAS stored in notes as structured text
-    # (bookings table doesn't need a new column; we track via notes + premium update)
+    # Merge VAS with existing addons in booking
+    existing_addons = booking.get("addons") or []
+    if isinstance(existing_addons, str):
+        import json
+        try:
+            existing_addons = json.loads(existing_addons) if existing_addons else []
+        except Exception:
+            existing_addons = []
+
+    addons_map = {}
+    for item in existing_addons:
+        if isinstance(item, dict):
+            k = item.get("key") or item.get("name") or str(item)
+            addons_map[k] = item
+        elif isinstance(item, str):
+            addons_map[item] = {"key": item, "name": item, "cost": 0}
+
+    for d in vas_details:
+        addons_map[d["key"]] = {"key": d["key"], "name": f"[VAS] {d['name']}", "cost": d["cost"]}
+
+    merged_addons = list(addons_map.values())
+
     vas_names = [d["name"] for d in vas_details]
     existing_notes = booking.get("notes") or ""
 
@@ -122,6 +142,7 @@ async def apply_vas_to_booking(
 
     success = update_booking(
         ref_number,
+        addons=merged_addons,
         premium=new_premium_str,
         notes=existing_notes + f"\nVAS added: {vas_names}",
     )
@@ -133,11 +154,12 @@ async def apply_vas_to_booking(
         "status": "success",
         "ref_number": ref_number.upper(),
         "vas_added": vas_details,
+        "all_addons": merged_addons,
         "vas_cost": vas_cost,
         "previous_premium": f"{base_premium:,.0f}",
         "new_total": new_premium_str,
         "instruction": (
             "Tell the user their VAS services have been added, show the updated total clearly, "
-            "and offer to regenerate the booking confirmation PDF with the VAS included."
+            "and offer to regenerate the booking confirmation PDF with all addons and VAS included."
         ),
     }

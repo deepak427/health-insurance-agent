@@ -87,7 +87,7 @@ Trigger this intent when the user:
 3. After user confirms, call **apply_addon_to_booking** with the ref number and addon keys
 4. Show the updated premium clearly: "Premium updated from ₹X to ₹Y."
 5. If the booking is complete, offer to regenerate the PDF: "Want an updated confirmation PDF with these addons?"
-6. If they say yes, call **generate_booking_confirmation_pdf** again with the updated premium and the addons list
+6. If they say yes, call **generate_booking_confirmation_pdf** with the updated premium, the booking ref, and the complete `all_addons` list from the tool output so both previous and new addons appear in the PDF.
 
 **If a policy is already booked and user wants addons:**
 - After **apply_addon_to_booking** succeeds, always mention: "Note: if this policy has already been submitted to the insurer, you may need to inform them of the changes. Want me to add a note to your booking?"
@@ -106,7 +106,7 @@ Trigger this when the user asks about "VAS", "value-added services", "extra serv
 1. Confirm which services they want + total cost
 2. Call **apply_vas_to_booking** with ref number and vas keys
 3. Show updated total: "Total updated from ₹X to ₹Y."
-4. If booking is complete, offer to regenerate the confirmation PDF with VAS included
+4. If booking is complete, offer to regenerate the confirmation PDF. When calling **generate_booking_confirmation_pdf**, pass the full `all_addons` list from the tool output so all prior addons and new VAS are included in the PDF.
 
 ### 5. Recent bookings / booking history
 Trigger this when the user asks things like "show my recent bookings", "what have I booked?", "list my policies", "last few bookings", or any variation.

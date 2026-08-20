@@ -109,14 +109,32 @@ async def apply_addon_to_booking(
             "cost": cost,
         })
 
-    # Merge with existing addons (avoid duplicates)
+    # Merge with existing addons (avoid duplicates and preserve existing items)
     existing_addons = booking.get("addons") or []
     if isinstance(existing_addons, str):
         import json
-        existing_addons = json.loads(existing_addons) if existing_addons else []
-    merged_addons = list({a if isinstance(a, str) else a.get("key", ""): a for a in (
-        [{"key": k} for k in existing_addons if isinstance(k, str)] + addon_details
-    )}.values())
+        try:
+            existing_addons = json.loads(existing_addons) if existing_addons else []
+        except Exception:
+            existing_addons = []
+
+    addons_map = {}
+    for item in existing_addons:
+        if isinstance(item, dict):
+            k = item.get("key") or item.get("name") or str(item)
+            addons_map[k] = item
+        elif isinstance(item, str):
+            info = addons_catalog.get(item, {})
+            addons_map[item] = {
+                "key": item,
+                "name": info.get("name", item),
+                "cost": info.get("price_flat", 0),
+            }
+
+    for d in addon_details:
+        addons_map[d["key"]] = d
+
+    merged_addons = list(addons_map.values())
 
     # Recalculate premium
     try:
@@ -142,11 +160,12 @@ async def apply_addon_to_booking(
         "status": "success",
         "ref_number": ref_number.upper(),
         "addons_added": addon_details,
+        "all_addons": merged_addons,
         "addon_cost": addon_cost,
         "previous_premium": f"{base_premium:,.0f}",
         "new_premium": new_premium_str,
         "instruction": (
             "Tell the user their addons have been applied, show the updated premium clearly, "
-            "and offer to regenerate the booking confirmation PDF with the addons included."
+            "and offer to regenerate the booking confirmation PDF with all addons included."
         ),
     }
