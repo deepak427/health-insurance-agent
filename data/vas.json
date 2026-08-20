@@ -1,0 +1,82 @@
+{
+  "doctor_on_call": {
+    "name": "Doctor on Call",
+    "description": "24/7 access to a certified doctor via phone or video call from anywhere in the world",
+    "categories": ["medical", "health", "travel"],
+    "price_flat": 299,
+    "highlights": ["Unlimited consultations during trip", "Available in 10+ languages", "Prescription assistance abroad", "Valid for entire travel duration"],
+    "suitable_for": "All travellers — especially families and senior citizens"
+  },
+  "air_ambulance": {
+    "name": "Air Ambulance",
+    "description": "Emergency medical evacuation by air to the nearest suitable hospital or back home",
+    "categories": ["medical", "emergency", "travel"],
+    "price_flat": 999,
+    "highlights": ["Worldwide coverage", "Medical team on board", "Coordination with local hospitals", "Repatriation to home country if needed"],
+    "suitable_for": "Travellers visiting remote areas or countries with poor medical infrastructure"
+  },
+  "travel_concierge": {
+    "name": "Travel Concierge",
+    "description": "Dedicated 24/7 concierge support for bookings, emergencies, and travel assistance",
+    "categories": ["travel", "assistance", "concierge"],
+    "price_flat": 199,
+    "highlights": ["Hotel & restaurant bookings", "Emergency cash transfer assistance", "Lost passport & document support", "Local translator on demand"],
+    "suitable_for": "Business travellers and first-time international travellers"
+  },
+  "roadside_assistance": {
+    "name": "Roadside Assistance",
+    "description": "On-ground vehicle breakdown and roadside help at your travel destination",
+    "categories": ["travel", "vehicle", "car"],
+    "price_flat": 149,
+    "highlights": ["Towing up to 50km", "Flat tyre & battery jump-start", "Emergency fuel delivery", "Available 24/7"],
+    "suitable_for": "Travellers planning road trips or hiring rental cars"
+  },
+  "mental_health_support": {
+    "name": "Mental Health Support",
+    "description": "Access to licensed therapists and counsellors via phone or video during your trip",
+    "categories": ["health", "wellness", "mental"],
+    "price_flat": 249,
+    "highlights": ["Up to 3 sessions during trip", "Anxiety, stress & crisis support", "Confidential & secure", "Available in multiple languages"],
+    "suitable_for": "Solo travellers, long-stay travellers, or those prone to travel anxiety"
+  },
+  "emergency_cash": {
+    "name": "Emergency Cash Assistance",
+    "description": "Same-day emergency cash transfer if you lose your wallet or are robbed abroad",
+    "categories": ["financial", "emergency", "travel"],
+    "price_flat": 99,
+    "highlights": ["Transfer up to $500 within 4 hours", "Available in 150+ countries", "No repayment needed — covered service", "One claim per trip"],
+    "suitable_for": "All international travellers"
+  },
+  "visa_assistance": {
+    "name": "Visa & Entry Assistance",
+    "description": "Expert guidance and documentation support for visa applications and entry requirements",
+    "categories": ["visa", "documentation", "travel"],
+    "price_flat": 199,
+    "highlights": ["Visa application review & checklist", "Real-time entry requirement updates", "Cover letter templates", "Embassy appointment reminders"],
+    "suitable_for": "Travellers applying for complex visas (Schengen, US, UK)"
+  },
+  "lounge_access": {
+    "name": "Airport Lounge Access",
+    "description": "Single-visit airport lounge access at departure and arrival airports",
+    "categories": ["travel", "airport", "comfort"],
+    "price_flat": 349,
+    "highlights": ["Access at 1,300+ lounges worldwide", "Covers departure & one stopover", "Includes food, Wi-Fi & shower", "Companion access available"],
+    "suitable_for": "Long-haul or business travellers wanting comfort during layovers"
+  },
+  "pharmacy_delivery": {
+    "name": "Pharmacy on Demand",
+    "description": "Same-day prescription medicine delivery to your hotel anywhere in major cities",
+    "categories": ["medical", "health", "travel"],
+    "price_flat": 179,
+    "highlights": ["Delivery within 4 hours in 50+ cities", "Licensed pharmacists available", "Handles local prescription translation", "Cold-chain medicines supported"],
+    "suitable_for": "Travellers on regular medication or with chronic conditions"
+  },
+  "repatriation_remains": {
+    "name": "Mortal Remains Repatriation",
+    "description": "Covers the full cost of repatriating mortal remains to the home country in the event of death abroad",
+    "categories": ["emergency", "repatriation", "travel"],
+    "price_flat": 499,
+    "highlights": ["Full repatriation cost covered", "Documentation & legal coordination", "Liaison with local authorities", "Family notification support"],
+    "suitable_for": "Elderly travellers or those with serious medical conditions"
+  }
+}

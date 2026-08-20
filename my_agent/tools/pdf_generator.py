@@ -493,6 +493,7 @@ async def generate_booking_confirmation_pdf(
     tool_context: ToolContext,
     booking_ref: str = "",
     additional_details: str = "",
+    addons: list = None,
 ) -> dict:
     """
     Generates a policy booking confirmation PDF after a travel policy has been booked.
@@ -512,6 +513,8 @@ async def generate_booking_confirmation_pdf(
         tool_context:       ADK tool context for saving the artifact.
         booking_ref:        Booking or reference number if available (optional).
         additional_details: Any extra notes or conditions collected during booking (optional).
+        addons:             List of addon dicts applied to this booking (optional).
+                            Each: {"name": str, "cost": number} or just strings.
 
     Returns:
         dict with status and filename.
@@ -542,21 +545,37 @@ async def generate_booking_confirmation_pdf(
                 f"- Premium Paid: {premium}",
             ],
         },
-        {
-            "heading": "Next Steps",
-            "lines": [
-                "- Share Passport copies (front + back) for KYC.",
-                "- Share PAN card or Aadhaar for identity verification.",
-                "- For any claims or support, reach out with your policy number.",
-            ],
-        },
-        *(
-            [{
-                "heading": "Additional Notes",
-                "lines": [additional_details],
-            }] if additional_details else []
-        ),
     ]
+
+    # Add addons section if any
+    if addons:
+        addon_lines = []
+        for a in addons:
+            if isinstance(a, dict):
+                name = a.get("name", a.get("key", str(a)))
+                cost = a.get("cost", "")
+                addon_lines.append(f"- {name}" + (f" (+₹{cost})" if cost else ""))
+            else:
+                addon_lines.append(f"- {a}")
+        sections.append({
+            "heading": "Add-Ons Included",
+            "lines": addon_lines,
+        })
+
+    sections.append({
+        "heading": "Next Steps",
+        "lines": [
+            "- Share Passport copies (front + back) for KYC.",
+            "- Share PAN card or Aadhaar for identity verification.",
+            "- For any claims or support, reach out with your policy number.",
+        ],
+    })
+
+    if additional_details:
+        sections.append({
+            "heading": "Additional Notes",
+            "lines": [additional_details],
+        })
 
     pdf_bytes = _build_pdf("Policy Booking\nConfirmation", sections)
 

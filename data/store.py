@@ -13,6 +13,8 @@ FILES = {
     "claims": os.path.join(DATA_DIR, "claims.json"),
     "premium_config": os.path.join(DATA_DIR, "premium_config.json"),
     "response_prompt": os.path.join(DATA_DIR, "response_prompt.json"),
+    "addons": os.path.join(DATA_DIR, "addons.json"),
+    "vas": os.path.join(DATA_DIR, "vas.json"),
 }
 
 

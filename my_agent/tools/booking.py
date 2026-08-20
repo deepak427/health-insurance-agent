@@ -21,6 +21,7 @@ async def save_booking(
     premium: str,
     tool_context: ToolContext,
     notes: str = "",
+    addons: list = None,
 ) -> dict:
     """
     Saves a confirmed booking to the database and returns a reference number.
@@ -42,6 +43,7 @@ async def save_booking(
         premium:         Premium paid.
         tool_context:    ADK tool context (provides user_id and session_id).
         notes:           Any extra notes (e.g. confirmation PDF filename).
+        addons:          List of addon keys already selected (if any).
 
     Returns:
         dict with ref_number.
@@ -70,6 +72,7 @@ async def save_booking(
         sum_insured=sum_insured,
         premium=premium,
         artifact_ids=artifact_ids,
+        addons=addons or [],
         notes=notes,
     )
     return {"status": "success", "ref_number": ref}
@@ -106,9 +109,11 @@ async def update_booking_details(
     notes: str = "",
     travel_dates: str = "",
     destination: str = "",
+    premium: str = "",
+    addons: list = None,
 ) -> dict:
     """
-    Updates an existing booking record (e.g. status change, add notes, update dates).
+    Updates an existing booking record (e.g. status change, add notes, update dates, update addons/premium).
     Use this when the user wants to modify or annotate a booked policy.
 
     Args:
@@ -118,6 +123,8 @@ async def update_booking_details(
         notes:        Notes to append or set.
         travel_dates: Updated travel dates if changed.
         destination:  Updated destination if changed.
+        premium:      Updated premium if addons changed the total.
+        addons:       Updated list of addon objects/keys if addons were added/removed.
 
     Returns:
         dict with status.
@@ -131,6 +138,10 @@ async def update_booking_details(
         fields["travel_dates"] = travel_dates
     if destination:
         fields["destination"] = destination
+    if premium:
+        fields["premium"] = premium
+    if addons is not None:
+        fields["addons"] = addons
 
     updated = update_booking(ref_number, **fields)
     if not updated:

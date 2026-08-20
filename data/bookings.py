@@ -38,10 +38,16 @@ def _init():
                 sum_insured  TEXT,
                 premium      TEXT,
                 artifact_ids TEXT,   -- JSON array of artifact filenames
+                addons       TEXT,   -- JSON array of selected addon keys
                 status       TEXT DEFAULT 'confirmed',
                 notes        TEXT
             )
         """)
+        # Migrate: add addons column if it doesn't exist (existing installs)
+        try:
+            c.execute("ALTER TABLE bookings ADD COLUMN addons TEXT")
+        except Exception:
+            pass  # column already exists
 
 
 _init()
@@ -66,6 +72,7 @@ def create_booking(
     sum_insured: str = "",
     premium: str = "",
     artifact_ids: Optional[list] = None,
+    addons: Optional[list] = None,
     notes: str = "",
 ) -> str:
     """Create a booking record and return the reference number."""
@@ -84,14 +91,15 @@ def create_booking(
                 ref_number, created_at, updated_at, user_id, session_id,
                 policy_name, insurer, destination, travel_dates,
                 num_adults, num_children, traveller_ages,
-                sum_insured, premium, artifact_ids, status, notes
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                sum_insured, premium, artifact_ids, addons, status, notes
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             ref, now, now, user_id, session_id,
             policy_name, insurer, destination, travel_dates,
             num_adults, num_children, traveller_ages,
             sum_insured, premium,
             json.dumps(artifact_ids or []),
+            json.dumps(addons or []),
             "confirmed", notes,
         ))
     return ref
@@ -107,6 +115,7 @@ def get_booking(ref_number: str) -> Optional[dict]:
         return None
     d = dict(row)
     d["artifact_ids"] = json.loads(d.get("artifact_ids") or "[]")
+    d["addons"] = json.loads(d.get("addons") or "[]")
     return d
 
 
@@ -115,13 +124,15 @@ def update_booking(ref_number: str, **fields) -> bool:
     allowed = {
         "status", "notes", "artifact_ids", "travel_dates",
         "num_adults", "num_children", "traveller_ages",
-        "sum_insured", "premium", "destination",
+        "sum_insured", "premium", "destination", "addons",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return False
     if "artifact_ids" in updates and isinstance(updates["artifact_ids"], list):
         updates["artifact_ids"] = json.dumps(updates["artifact_ids"])
+    if "addons" in updates and isinstance(updates["addons"], list):
+        updates["addons"] = json.dumps(updates["addons"])
     now = datetime.now(timezone.utc).isoformat()
     updates["updated_at"] = now
     set_clause = ", ".join(f"{k}=?" for k in updates)

@@ -158,6 +158,7 @@ def list_bookings_endpoint(user_id: str = None):
         d = dict(row)
         import json
         d["artifact_ids"] = json.loads(d.get("artifact_ids") or "[]")
+        d["addons"] = json.loads(d.get("addons") or "[]")
         bookings.append(d)
     
     return {"bookings": bookings}

@@ -16,6 +16,10 @@ from .tools import (
     save_booking,
     get_booking_details,
     update_booking_details,
+    get_available_addons,
+    apply_addon_to_booking,
+    get_available_vas,
+    apply_vas_to_booking,
 )
 
 _RESPONSE_PROMPT_PATH = os.path.join(
@@ -80,6 +84,10 @@ root_agent = Agent(
         save_booking,
         get_booking_details,
         update_booking_details,
+        get_available_addons,
+        apply_addon_to_booking,
+        get_available_vas,
+        apply_vas_to_booking,
         LoadArtifactsTool(),
     ],
 )

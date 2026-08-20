@@ -1,0 +1,98 @@
+{
+  "health_cover_upgrade": {
+    "name": "Health Cover Upgrade",
+    "description": "Increases medical coverage limit from $50,000 to $100,000",
+    "categories": ["health", "medical"],
+    "price_per_person": 250,
+    "highlights": ["Double the medical coverage", "Covers declared pre-existing conditions", "ICU & hospitalization included"],
+    "suitable_for": "Travellers with pre-existing conditions or older travellers"
+  },
+  "smoker_cover": {
+    "name": "Smoker Cover",
+    "description": "Extends coverage for smoking-related medical claims typically excluded",
+    "categories": ["health", "smoker"],
+    "price_per_person": 180,
+    "highlights": ["No blanket exclusions for smokers", "Respiratory & cardiovascular conditions covered", "Applicable for current & recent ex-smokers"],
+    "suitable_for": "Smokers or those who quit within the last 12 months"
+  },
+  "adventure_sports": {
+    "name": "Adventure Sports Cover",
+    "description": "Covers injuries from adventure activities like skiing, scuba diving, and trekking",
+    "categories": ["sports", "adventure", "activities"],
+    "price_per_person": 300,
+    "highlights": ["Skiing & snowboarding covered", "Scuba diving up to 30m depth", "Trekking above 3,000m altitude", "Emergency evacuation included"],
+    "suitable_for": "Travellers planning adventure or extreme sports activities"
+  },
+  "trip_cancellation_plus": {
+    "name": "Trip Cancellation Plus",
+    "description": "Enhanced trip cancellation including cancel-for-any-reason up to 75% refund",
+    "categories": ["cancellation", "trip"],
+    "price_flat": 500,
+    "highlights": ["Cancel for any reason (75% refund)", "Covers flight delays over 6 hours", "Missed connection reimbursement"],
+    "suitable_for": "Travellers with expensive non-refundable bookings"
+  },
+  "baggage_protection_plus": {
+    "name": "Baggage Protection Plus",
+    "description": "Enhanced baggage and personal belongings protection",
+    "categories": ["baggage", "belongings"],
+    "price_per_person": 120,
+    "highlights": ["Coverage up to $2,000 per bag", "Electronics covered up to $800", "Delayed baggage: $200 after 6 hours"],
+    "suitable_for": "Travellers carrying expensive electronics or valuables"
+  },
+  "maternity_cover": {
+    "name": "Maternity Cover",
+    "description": "Covers pregnancy complications and emergency delivery abroad",
+    "categories": ["health", "maternity", "pregnancy"],
+    "price_per_person": 400,
+    "highlights": ["Emergency delivery abroad covered", "Pregnancy complications covered", "Newborn emergency care for 7 days"],
+    "suitable_for": "Pregnant travellers up to 28 weeks gestation"
+  },
+  "covid_cover": {
+    "name": "COVID-19 Cover",
+    "description": "Dedicated coverage for COVID-19 related cancellations and treatment abroad",
+    "categories": ["health", "covid", "pandemic"],
+    "price_per_person": 150,
+    "highlights": ["COVID treatment abroad covered", "Quarantine hotel costs up to 14 days", "Pre-departure cancellation if tested positive"],
+    "suitable_for": "All travellers, especially to high-risk regions"
+  },
+  "rental_car_excess": {
+    "name": "Rental Car Excess Waiver",
+    "description": "Covers the excess/deductible charged on rental car damage",
+    "categories": ["car", "rental", "vehicle"],
+    "price_flat": 80,
+    "highlights": ["Zero excess on damage claims", "Third-party liability included", "24/7 roadside assistance"],
+    "suitable_for": "Travellers planning to hire a car at destination"
+  },
+  "flight_delay_protection": {
+    "name": "Flight Delay Protection",
+    "description": "Cash compensation for flight delays and missed connections",
+    "categories": ["flight", "delay", "travel"],
+    "price_flat": 199,
+    "highlights": ["$50/hour compensation after 2-hour delay", "Up to $500 per trip", "Covers missed connections and rebooking fees"],
+    "suitable_for": "Frequent flyers or travellers on tight itineraries"
+  },
+  "hotel_cancellation": {
+    "name": "Hotel & Accommodation Cover",
+    "description": "Covers non-refundable hotel and accommodation costs if trip is disrupted",
+    "categories": ["hotel", "accommodation", "cancellation", "travel"],
+    "price_flat": 150,
+    "highlights": ["Covers prepaid hotel bookings", "Includes Airbnb and vacation rentals", "Applies on medical cancellations too"],
+    "suitable_for": "Travellers with fully pre-paid non-refundable accommodation"
+  },
+  "passport_loss": {
+    "name": "Passport & Document Loss",
+    "description": "Covers emergency expenses from losing your passport or travel documents abroad",
+    "categories": ["passport", "documents", "travel"],
+    "price_flat": 99,
+    "highlights": ["Emergency passport replacement costs", "Travel delay costs while reissuing", "24/7 consulate assistance"],
+    "suitable_for": "International travellers — especially first-timers"
+  },
+  "personal_liability": {
+    "name": "Personal Liability Cover",
+    "description": "Covers legal liability if you accidentally injure someone or damage property abroad",
+    "categories": ["liability", "legal", "travel"],
+    "price_per_person": 90,
+    "highlights": ["Up to $500,000 liability coverage", "Covers accidental property damage", "Legal defence costs included"],
+    "suitable_for": "Travellers visiting countries with high litigation risk (e.g. USA, UAE)"
+  }
+}
