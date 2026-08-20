@@ -18,7 +18,7 @@ from data.store import load, save, FILES
 from data.bookings import get_booking, create_booking
 
 load_dotenv()
-# Also load agent-level env so BACKEND_BASE_URL / AGENT_JWT_TOKEN are available
+# Also load agent-level env so we have access to agent settings
 _agent_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), "my_agent", ".env")
 load_dotenv(_agent_env, override=False)
 
@@ -65,40 +65,6 @@ _artifact_svc = create_artifact_service_from_options(
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-# ── hip-backend proxy endpoints ────────────────────────────────────────────────
-_HIP_BACKEND = os.environ.get("BACKEND_BASE_URL", "http://localhost:5000")
-_HIP_JWT = os.environ.get("AGENT_JWT_TOKEN", "")
-
-def _hip_headers():
-    return {
-        "Content-Type": "application/json",
-        "Cookie": f"Authorization={_HIP_JWT}",
-    }
-
-
-@app.get("/policies", summary="Proxy — list all available health policies from hip-backend")
-def list_policies():
-    import requests as _req
-    try:
-        res = _req.get(f"{_HIP_BACKEND}/policy", headers=_hip_headers(), timeout=10)
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"hip-backend unreachable: {e}")
-
-
-@app.get("/companies", summary="Proxy — list all insurance companies from hip-backend")
-def list_companies():
-    import requests as _req
-    try:
-        res = _req.get(f"{_HIP_BACKEND}/company", headers=_hip_headers(), timeout=10)
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"hip-backend unreachable: {e}")
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 # ── Dynamic data endpoints ─────────────────────────────────────────────────────
@@ -154,15 +120,6 @@ async def download_artifact(
     )
 
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8000)),
-        reload=True,
-    )
-
-
 # ── Bookings API ───────────────────────────────────────────────────────────────
 @app.get("/bookings/{ref_number}", summary="Get booking details by reference number")
 def get_booking_endpoint(ref_number: str):
@@ -170,3 +127,46 @@ def get_booking_endpoint(ref_number: str):
     if not booking:
         raise HTTPException(status_code=404, detail=f"Booking {ref_number} not found")
     return booking
+
+
+@app.get("/bookings", summary="Get all bookings for a user")
+def list_bookings_endpoint(user_id: str = None):
+    """
+    List all bookings, optionally filtered by user_id.
+    Returns bookings ordered by created_at descending (newest first).
+    """
+    import sqlite3
+    from data.bookings import _DB_PATH
+    
+    conn = sqlite3.connect(_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    
+    if user_id:
+        rows = conn.execute(
+            "SELECT * FROM bookings WHERE user_id=? ORDER BY created_at DESC",
+            (user_id,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM bookings ORDER BY created_at DESC"
+        ).fetchall()
+    
+    conn.close()
+    
+    bookings = []
+    for row in rows:
+        d = dict(row)
+        import json
+        d["artifact_ids"] = json.loads(d.get("artifact_ids") or "[]")
+        bookings.append(d)
+    
+    return {"bookings": bookings}
+
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        reload=True,
+    )

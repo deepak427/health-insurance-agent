@@ -14,9 +14,6 @@ from .tools import (
     save_booking,
     get_booking_details,
     update_booking_details,
-    search_policies,
-    calculate_premium,
-    generate_policy_comparison_pdf,
 )
 
 _RESPONSE_PROMPT_PATH = os.path.join(
@@ -68,7 +65,7 @@ def _instruction_provider(context: ReadonlyContext) -> str:
 root_agent = Agent(
     model='gemini-3.5-flash',
     name='insurance_support_agent',
-    description='Expert insurance support — answers questions, analyzes policy documents, guides claims, generates PDF guides, and explains coverage.',
+    description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
     instruction=_instruction_provider,
     tools=[
         get_insurance_faq,
@@ -79,9 +76,6 @@ root_agent = Agent(
         save_booking,
         get_booking_details,
         update_booking_details,
-        search_policies,
-        calculate_premium,
-        generate_policy_comparison_pdf,
         LoadArtifactsTool(),
     ],
 )
