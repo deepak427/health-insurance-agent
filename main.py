@@ -11,6 +11,8 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel
+from google.genai import types as genai_types
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.cli.service_registry import get_service_registry
 from google.adk.cli.utils.service_factory import create_artifact_service_from_options
@@ -85,6 +87,70 @@ async def put_data(key: str, request: Request):
     save(key, body)
     return {"status": "saved", "key": key}
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Artifact Upload & Download API ─────────────────────────────────────────────
+class UploadArtifactRequest(BaseModel):
+    app_name: str = "my_agent"
+    user_id: str
+    session_id: str
+    filename: str
+    mime_type: str = "application/octet-stream"
+    data: str  # base64 encoded string
+
+
+@app.post("/upload-artifact", summary="Upload and save a user document as an artifact")
+async def upload_artifact_endpoint(req: UploadArtifactRequest):
+    """
+    Saves a user-uploaded document (PDF, image, etc.) into the ADK artifact service
+    for the current session, and associates it with any existing booking for the user/session.
+    """
+    import json
+    import sqlite3
+    from data.bookings import _DB_PATH, update_booking
+
+    try:
+        raw_bytes = base64.b64decode(req.data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 data: {e}")
+
+    part = genai_types.Part(
+        inline_data=genai_types.Blob(
+            mime_type=req.mime_type or "application/octet-stream",
+            data=raw_bytes,
+        )
+    )
+
+    try:
+        version = await _artifact_svc.save_artifact(
+            app_name=req.app_name,
+            user_id=req.user_id,
+            session_id=req.session_id,
+            filename=req.filename,
+            artifact=part,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save artifact: {e}")
+
+    # If any booking exists for this session or user, ensure the uploaded artifact is linked to it
+    try:
+        conn = sqlite3.connect(_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT ref_number, artifact_ids FROM bookings WHERE session_id=? OR user_id=? ORDER BY created_at DESC LIMIT 1",
+            (req.session_id, req.user_id),
+        ).fetchone()
+        conn.close()
+        if row:
+            ref = row["ref_number"]
+            curr_artifacts = json.loads(row["artifact_ids"] or "[]")
+            if req.filename not in curr_artifacts:
+                curr_artifacts.append(req.filename)
+                update_booking(ref, artifact_ids=curr_artifacts)
+    except Exception as e:
+        print(f"[upload-artifact] Warning syncing artifact to booking: {e}")
+
+    return {"status": "success", "filename": req.filename, "version": version}
 
 
 @app.get(
@@ -175,11 +241,48 @@ async def download_artifact_by_user(app_name: str, user_id: str, filename: str):
     Used by the My Policies panel where session_id may not be stored.
     """
     import pathlib
+    import sqlite3
+    from data.bookings import _DB_PATH
 
-    # Local storage path: {base_dir}/my_agent/.adk/artifacts/apps/{app_name}/users/{user_id}/sessions/*/artifacts/{filename}/versions/0/
-    base = pathlib.Path(AGENT_DIR) / "my_agent" / ".adk" / "artifacts" / "apps" / app_name / "users" / user_id / "sessions"
+    # 1. First check sessions from bookings DB
+    try:
+        conn = sqlite3.connect(_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT DISTINCT session_id FROM bookings WHERE user_id=?", (user_id,)).fetchall()
+        conn.close()
+        for row in rows:
+            sid = row["session_id"]
+            if not sid:
+                continue
+            artifact = await _artifact_svc.load_artifact(
+                app_name=app_name,
+                user_id=user_id,
+                session_id=sid,
+                filename=filename,
+            )
+            if artifact and artifact.inline_data:
+                inline = artifact.inline_data
+                raw = bytes(inline.data) if isinstance(inline.data, (bytes, bytearray)) else base64.b64decode(inline.data)
+                mime = inline.mime_type or "application/octet-stream"
+                return Response(
+                    content=raw,
+                    media_type=mime,
+                    headers={"Content-Disposition": f'inline; filename="{filename}"'},
+                )
+    except Exception:
+        pass
 
-    if base.exists():
+    # 2. Scan disk directory candidates
+    candidates = [
+        pathlib.Path(AGENT_DIR) / ".adk" / "artifacts" / "users" / user_id / "sessions",
+        pathlib.Path(AGENT_DIR) / "my_agent" / ".adk" / "artifacts" / "users" / user_id / "sessions",
+        pathlib.Path(AGENT_DIR) / "my_agent" / ".adk" / "artifacts" / "apps" / app_name / "users" / user_id / "sessions",
+        pathlib.Path(AGENT_DIR) / ".adk" / "artifacts" / "apps" / app_name / "users" / user_id / "sessions",
+    ]
+
+    for base in candidates:
+        if not base.exists():
+            continue
         for session_dir in base.iterdir():
             if not session_dir.is_dir():
                 continue
