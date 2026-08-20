@@ -136,6 +136,7 @@ async def update_booking_details(
 ) -> dict:
     """
     Updates an existing booking record (e.g. status change, add notes, update dates, update addons/premium).
+    Also automatically syncs any new artifacts (uploaded documents) from the current session into the booking.
     Use this when the user wants to modify or annotate a booked policy.
 
     Args:
@@ -164,6 +165,18 @@ async def update_booking_details(
         fields["premium"] = premium
     if addons is not None:
         fields["addons"] = addons
+
+    # Always sync the full artifact list from this session into the booking
+    try:
+        listed = await tool_context.list_artifacts()
+        if listed and isinstance(listed, list):
+            # Merge with existing artifact_ids to avoid duplicates
+            existing = get_booking(ref_number)
+            existing_ids = set(existing.get("artifact_ids", []) if existing else [])
+            merged = list(existing_ids | set(listed))
+            fields["artifact_ids"] = merged
+    except Exception:
+        pass
 
     updated = update_booking(ref_number, **fields)
     if not updated:

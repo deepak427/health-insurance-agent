@@ -84,7 +84,7 @@ After booking confirmation, collect traveler personal details for KYC:
 If the user uploads a document (Passport, Aadhaar, PAN):
 - Call **extract_traveler_details_from_document** to extract details from the document
 - Show the extracted details and ask for confirmation or any corrections
-- Update the booking with **update_booking_details** to add the collected information to notes
+- Update the booking with **update_booking_details** to add the collected information to notes AND save the uploaded document into the booking artifacts (always call update_booking_details after extracting from a document, even if just to sync the artifact)
 
 If they provide partial details or want to complete later:
 - Allow it! Save what they've given using **update_booking_details**
