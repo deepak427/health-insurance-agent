@@ -25,12 +25,6 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
     if not inline or not inline.data:
         return {"status": "error", "message": "Document appears to be empty."}
 
-    # Re-save so it appears in list_artifacts() and gets linked to the booking
-    try:
-        await tool_context.save_artifact(filename=filename, artifact=artifact)
-    except Exception:
-        pass
-
     return {
         "status": "success",
         "filename": filename,
@@ -65,13 +59,6 @@ async def extract_traveler_details_from_document(filename: str, tool_context: To
     inline = artifact.inline_data
     if not inline or not inline.data:
         return {"status": "error", "message": "Document appears to be empty."}
-
-    # Re-save explicitly so the file appears in list_artifacts() and gets
-    # linked to the booking when update_booking_details syncs artifacts.
-    try:
-        await tool_context.save_artifact(filename=filename, artifact=artifact)
-    except Exception:
-        pass
 
     return {
         "status": "success",

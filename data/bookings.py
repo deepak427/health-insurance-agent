@@ -74,6 +74,7 @@ def create_booking(
     artifact_ids: Optional[list] = None,
     addons: Optional[list] = None,
     notes: str = "",
+    status: str = "pending_docs",
 ) -> str:
     """Create a booking record and return the reference number."""
     now = datetime.now(timezone.utc).isoformat()
@@ -100,7 +101,7 @@ def create_booking(
             sum_insured, premium,
             json.dumps(artifact_ids or []),
             json.dumps(addons or []),
-            "confirmed", notes,
+            status or "pending_docs", notes,
         ))
     return ref
 

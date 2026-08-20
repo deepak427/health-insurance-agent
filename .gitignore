@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+*.db
 sessions.db
+bookings.db
+.adk/
 artifacts/
 *.log

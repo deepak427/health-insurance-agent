@@ -22,14 +22,20 @@ async def save_booking(
     tool_context: ToolContext,
     notes: str = "",
     addons: list = None,
+    status: str = "pending_docs",
 ) -> dict:
     """
-    Saves a confirmed booking to the database and returns a reference number.
-    Call this AFTER the booking is confirmed and AFTER generate_booking_confirmation_pdf.
-    Pass the confirmation PDF filename as part of notes if available.
+    Saves a booking record to the database and returns a reference number.
+    Call this when the user confirms their policy booking.
+    
+    If traveler identity/KYC details (Aadhaar, Passport, PAN) are not yet provided,
+    status should be 'pending_docs' (default), and DO NOT generate the confirmation PDF yet.
+    
+    If all traveler KYC details and identity documents are already provided,
+    status can be 'complete'.
 
     The reference number (e.g. BUD-A3F7K) should be shared with the user
-    so they can look up this booking later from any conversation.
+    so they can look up this booking or submit documents later.
 
     Args:
         policy_name:     Name of the booked policy.
@@ -42,11 +48,12 @@ async def save_booking(
         sum_insured:     Coverage amount.
         premium:         Premium paid.
         tool_context:    ADK tool context (provides user_id and session_id).
-        notes:           Any extra notes (e.g. confirmation PDF filename).
+        notes:           Any extra notes or traveler info.
         addons:          List of addon keys already selected (if any).
+        status:          Booking status: 'pending_docs' (default if KYC pending) or 'complete'.
 
     Returns:
-        dict with ref_number.
+        dict with ref_number and status.
     """
     user_id = tool_context.user_id if hasattr(tool_context, "user_id") else ""
     session_id = tool_context.session_id if hasattr(tool_context, "session_id") else ""
@@ -74,8 +81,9 @@ async def save_booking(
         artifact_ids=artifact_ids,
         addons=addons or [],
         notes=notes,
+        status=status or "pending_docs",
     )
-    return {"status": "success", "ref_number": ref}
+    return {"status": "success", "ref_number": ref, "booking_status": status or "pending_docs"}
 
 
 async def get_booking_details(
