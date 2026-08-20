@@ -119,6 +119,22 @@ def get_booking(ref_number: str) -> Optional[dict]:
     return d
 
 
+def get_recent_bookings(user_id: str, limit: int = 5) -> list:
+    """Return the most recent bookings for a user, newest first."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM bookings WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["artifact_ids"] = json.loads(d.get("artifact_ids") or "[]")
+        d["addons"] = json.loads(d.get("addons") or "[]")
+        result.append(d)
+    return result
+
+
 def update_booking(ref_number: str, **fields) -> bool:
     """Update allowed fields on a booking. Returns True if found and updated."""
     allowed = {

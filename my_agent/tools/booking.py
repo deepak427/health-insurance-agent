@@ -6,7 +6,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from google.adk.tools import ToolContext
-from data.bookings import create_booking, get_booking, update_booking
+from data.bookings import create_booking, get_booking, update_booking, get_recent_bookings as _get_recent_bookings
 
 
 async def save_booking(
@@ -100,6 +100,28 @@ async def get_booking_details(
             "message": f"No booking found for reference {ref_number.upper()}. Please double-check the reference number.",
         }
     return {"status": "success", "booking": booking}
+
+
+async def get_recent_bookings(
+    tool_context: ToolContext,
+    limit: int = 5,
+) -> dict:
+    """
+    Returns the most recent bookings for the current user (up to `limit`).
+    Use this when the user asks to see their recent bookings, booking history,
+    or past policies — even without a specific reference number.
+
+    Args:
+        tool_context: ADK tool context (provides user_id).
+        limit:        Max number of bookings to return (default 5, max 20).
+
+    Returns:
+        dict with "bookings" list and "count".
+    """
+    user_id = tool_context.user_id if hasattr(tool_context, "user_id") else ""
+    limit = min(max(1, limit), 20)
+    bookings = _get_recent_bookings(user_id, limit)
+    return {"status": "success", "bookings": bookings, "count": len(bookings)}
 
 
 async def update_booking_details(
