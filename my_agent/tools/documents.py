@@ -1,4 +1,5 @@
 from google.adk.tools import ToolContext
+from google.genai import types as genai_types
 
 
 async def analyze_insurance_document(filename: str, tool_context: ToolContext) -> dict:
@@ -24,6 +25,12 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
     if not inline or not inline.data:
         return {"status": "error", "message": "Document appears to be empty."}
 
+    # Re-save so it appears in list_artifacts() and gets linked to the booking
+    try:
+        await tool_context.save_artifact(filename=filename, artifact=artifact)
+    except Exception:
+        pass
+
     return {
         "status": "success",
         "filename": filename,
@@ -36,7 +43,7 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
 async def extract_traveler_details_from_document(filename: str, tool_context: ToolContext) -> dict:
     """
     Extracts traveler personal details from uploaded identity documents (Passport, Aadhaar, PAN card, etc.).
-    Use this when the user uploads a document and you need to extract booking details like name, age, 
+    Use this when the user uploads a document and you need to extract booking details like name, age,
     address, date of birth, document numbers, etc.
 
     The model will analyze the document and extract structured information that can be used for booking.
@@ -58,6 +65,13 @@ async def extract_traveler_details_from_document(filename: str, tool_context: To
     inline = artifact.inline_data
     if not inline or not inline.data:
         return {"status": "error", "message": "Document appears to be empty."}
+
+    # Re-save explicitly so the file appears in list_artifacts() and gets
+    # linked to the booking when update_booking_details syncs artifacts.
+    try:
+        await tool_context.save_artifact(filename=filename, artifact=artifact)
+    except Exception:
+        pass
 
     return {
         "status": "success",

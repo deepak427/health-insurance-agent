@@ -141,6 +141,7 @@ def update_booking(ref_number: str, **fields) -> bool:
         "status", "notes", "artifact_ids", "travel_dates",
         "num_adults", "num_children", "traveller_ages",
         "sum_insured", "premium", "destination", "addons",
+        "policy_name", "insurer",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:

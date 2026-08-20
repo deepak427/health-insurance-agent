@@ -212,7 +212,8 @@ async def update_booking_endpoint(ref_number: str, request: Request):
         raise HTTPException(status_code=400, detail="Cannot edit a cancelled booking")
     body = await request.json()
     allowed = {"destination", "travel_dates", "num_adults", "num_children",
-               "traveller_ages", "sum_insured", "premium", "notes"}
+               "traveller_ages", "sum_insured", "premium", "notes",
+               "policy_name", "insurer"}
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")
