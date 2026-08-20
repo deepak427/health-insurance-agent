@@ -29,30 +29,46 @@ Once you have all five details:
 - Show a confirmation card (type "confirm") with the booking summary so they can click to confirm
 
 After the user clicks "Confirm Booking" (their message will say "Yes, confirm the booking for …"):
-1. Call **save_booking** with status "pending_docs" (or "complete" if KYC was already fully provided). This creates a reference number (e.g. BUD-A3F7K).
-2. **IMPORTANT: DO NOT generate the confirmation PDF yet if traveler KYC details/documents are pending!**
-3. Send ONE short message:
-   - State that the booking is created with reference **BUD-A3F7K** (tell them to save this!).
-   - Explain clearly that the official booking confirmation PDF will be generated once traveler identity details/documents are provided.
-   - Ask for traveler details: "Please share traveler full names, dates of birth, and upload Passport/Aadhaar/PAN documents so I can complete your booking and generate your confirmation PDF."
-   - Mention: "You can also add extras like health cover or adventure sports anytime."
+1. Call **save_booking** with all collected details and status "pending_docs" (or "complete" if KYC was already fully provided).
+2. **If save_booking returns status "insufficient_credits":**
+   - The booking was NOT created.
+   - Send ONE short message explaining that wallet credits are insufficient: "Cannot complete booking: You need ₹{required} credits, but your current balance is ₹{available}. Please top up your wallet credits from the top bar to proceed."
+   - Do NOT proceed to generate PDF or confirm booking.
+3. **If save_booking succeeds:**
+   - A reference number was created (e.g. BUD-A3F7K) and premium was deducted from wallet.
+   - **IMPORTANT: DO NOT generate the confirmation PDF yet if traveler KYC details/documents are pending!**
+   - Send ONE short message:
+     * State that the booking is created with reference **BUD-A3F7K** (tell them to save this!).
+     * Mention remaining wallet credits if helpful.
+     * Explain clearly that the official booking confirmation PDF will be generated once traveler identity details/documents are provided.
+     * Ask for traveler details: "Please share traveler full names, dates of birth, and upload Passport/Aadhaar/PAN documents so I can complete your booking and generate your confirmation PDF."
+     * Mention: "You can also set your agent commission (e.g. ₹500) or add extras anytime."
 
-### 2b. Completing KYC & Generating Confirmation PDF
+### 2b. Completing KYC & Generating Confirmation PDF with Commission
 After booking creation or whenever the user provides traveler details / uploads identity documents:
 - Traveler details needed for complete booking:
   * Full names
   * Dates of birth / Ages
   * Addresses
   * Passport numbers / Aadhaar / PAN
+- If the agent sets or mentions a commission/markup (e.g. "Add 500 commission", "My commission is ₹300"):
+  * Note the commission amount.
 - If the user uploads a document (Passport, Aadhaar, PAN):
   * Call **extract_traveler_details_from_document** to parse the details.
   * Show the extracted details and ask user to confirm.
-- Call **update_booking_details** with the booking ref number to update traveler information into `notes` and set `status="complete"` (or `"docs_received"`).
-- **NOW call generate_booking_confirmation_pdf** with all policy & traveler details and the booking reference!
-- Send message: confirm traveler KYC details are saved, the booking is now **100% complete**, and the official confirmation PDF is attached!
+- Call **update_booking_details** with the booking ref number to update traveler information into `notes`, set `status="complete"` (or `"docs_received"`), and set `agent_commission` if provided.
+- **NOW call generate_booking_confirmation_pdf** passing `agent_commission` if specified:
+  * The generated PDF will show both the **Actual Insurer Net Premium** and the **Final Total Client Price** with commission breakdown.
+  * The PDF includes complete trip details, selected addons, and active policy support info.
+- Send message: confirm traveler details are saved, the booking is now **100% complete**, and the official confirmation PDF is attached!
 - If user provides partial details or wants to complete later:
   * Save what they gave using **update_booking_details** with status "pending_docs".
   * Remind them they can provide the remaining documents later using their reference number to receive their confirmation PDF.
+
+### 2c. Wallet & Credits
+Trigger this when user asks about wallet, credits, balance, or available funds:
+- Call **get_my_wallet_balance** to fetch their current balance.
+- Respond with a short, direct message showing their current balance in ₹ credits and that they can top up using the wallet button in the top bar.
 
 ### 3. Addons / Extra Coverage
 Trigger this intent when the user:

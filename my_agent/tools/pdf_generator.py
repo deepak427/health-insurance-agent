@@ -480,6 +480,21 @@ async def generate_insurance_summary_pdf(
     }
 
 
+import re
+
+
+def _parse_num(val) -> float:
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    clean = re.sub(r"[^\d.]", "", str(val))
+    try:
+        return float(clean) if clean else 0.0
+    except ValueError:
+        return 0.0
+
+
 async def generate_booking_confirmation_pdf(
     policy_name: str,
     insurer: str,
@@ -494,11 +509,11 @@ async def generate_booking_confirmation_pdf(
     booking_ref: str = "",
     additional_details: str = "",
     addons: list = None,
+    agent_commission: str = "",
 ) -> dict:
     """
     Generates a policy booking confirmation PDF after a travel policy has been booked.
-    Call this immediately after confirming a booking — DO NOT call it before the booking
-    is confirmed or while still collecting information.
+    Call this when a booking is complete with required traveler details.
 
     Args:
         policy_name:        Name of the booked policy (e.g. "Tata AIG Travel Guard Gold").
@@ -509,23 +524,42 @@ async def generate_booking_confirmation_pdf(
         num_children:       Number of child travellers.
         traveller_ages:     Ages of travellers as a string (e.g. "35, 32").
         sum_insured:        Coverage amount (e.g. "$50,000" or "50 Lakh").
-        premium:            Final premium amount (e.g. "₹1,200").
+        premium:            Actual insurer premium amount (e.g. "₹1,200").
         tool_context:       ADK tool context for saving the artifact.
-        booking_ref:        Booking or reference number if available (optional).
+        booking_ref:        Booking or reference number (e.g. "BUD-A3F7K").
         additional_details: Any extra notes or conditions collected during booking (optional).
         addons:             List of addon dicts applied to this booking (optional).
-                            Each: {"name": str, "cost": number} or just strings.
+        agent_commission:   Optional agent commission / service fee markup (e.g. "₹500" or "500").
+                            When set, PDF shows both actual insurer price and final client price.
 
     Returns:
         dict with status and filename.
     """
+    base_num = _parse_num(premium)
+    comm_num = _parse_num(agent_commission)
+
+    if comm_num > 0 and base_num > 0:
+        total_client = base_num + comm_num
+        coverage_lines = [
+            f"- Sum Insured: {sum_insured}",
+            f"- Insurer Net Premium (Actual): ₹{base_num:,.0f}",
+            f"- Agent Commission / Markup: ₹{comm_num:,.0f}",
+            f"- Total Client Price (Final): ₹{total_client:,.0f}",
+        ]
+    else:
+        coverage_lines = [
+            f"- Sum Insured: {sum_insured}",
+            f"- Premium: {premium if premium.startswith('₹') or not base_num else f'₹{base_num:,.0f}'}",
+        ]
+
     sections = [
         {
             "heading": "Booking Summary",
             "lines": [
                 f"- Policy: {policy_name}",
                 f"- Insurer: {insurer}",
-                *([ f"- Booking Reference: {booking_ref}"] if booking_ref else []),
+                *([f"- Booking Reference: {booking_ref}"] if booking_ref else []),
+                "- Status: Confirmed & Active",
             ],
         },
         {
@@ -539,11 +573,8 @@ async def generate_booking_confirmation_pdf(
             ],
         },
         {
-            "heading": "Coverage & Premium",
-            "lines": [
-                f"- Sum Insured: {sum_insured}",
-                f"- Premium Paid: {premium}",
-            ],
+            "heading": "Coverage & Premium Breakdown" if comm_num > 0 else "Coverage & Premium",
+            "lines": coverage_lines,
         },
     ]
 
@@ -558,16 +589,16 @@ async def generate_booking_confirmation_pdf(
             else:
                 addon_lines.append(f"- {a}")
         sections.append({
-            "heading": "Add-Ons Included",
+            "heading": "Add-Ons & VAS Included",
             "lines": addon_lines,
         })
 
     sections.append({
-        "heading": "Next Steps",
+        "heading": "Policy & Support Information",
         "lines": [
-            "- Share Passport copies (front + back) for KYC.",
-            "- Share PAN card or Aadhaar for identity verification.",
-            "- For any claims or support, reach out with your policy number.",
+            "- Booking is fully confirmed and active for the specified travel dates.",
+            "- Traveler KYC verification completed successfully.",
+            "- For 24/7 medical emergencies or claims, contact operations support with your booking reference.",
         ],
     })
 

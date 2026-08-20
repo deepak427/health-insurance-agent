@@ -7,6 +7,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from google.adk.tools import ToolContext
 from data.bookings import create_booking, get_booking, update_booking, get_recent_bookings as _get_recent_bookings
+from data.wallet import get_wallet, deduct_wallet_credits, parse_amount
+
+
+async def get_my_wallet_balance(tool_context: ToolContext) -> dict:
+    """
+    Checks the current agent/user's available wallet credits balance.
+    Use this when the user asks about their credit balance or wallet funds.
+
+    Args:
+        tool_context: ADK tool context.
+
+    Returns:
+        dict with available credit balance.
+    """
+    user_id = tool_context.user_id if hasattr(tool_context, "user_id") else ""
+    wallet = get_wallet(user_id)
+    return {
+        "status": "success",
+        "user_id": wallet["user_id"],
+        "available_credits": wallet["balance"],
+        "message": f"Your current wallet balance is ₹{wallet['balance']:,.0f} credits.",
+    }
 
 
 async def save_booking(
@@ -23,40 +45,50 @@ async def save_booking(
     notes: str = "",
     addons: list = None,
     status: str = "pending_docs",
+    agent_commission: str = "",
 ) -> dict:
     """
-    Saves a booking record to the database and returns a reference number.
-    Call this when the user confirms their policy booking.
-    
-    If traveler identity/KYC details (Aadhaar, Passport, PAN) are not yet provided,
-    status should be 'pending_docs' (default), and DO NOT generate the confirmation PDF yet.
-    
-    If all traveler KYC details and identity documents are already provided,
-    status can be 'complete'.
+    Saves a booking record to the database and deducts the required premium credits from user wallet.
+    Returns a reference number on success.
 
-    The reference number (e.g. BUD-A3F7K) should be shared with the user
-    so they can look up this booking or submit documents later.
+    If wallet credits are insufficient to cover the premium, NO booking is created and an
+    'insufficient_credits' status is returned.
 
     Args:
-        policy_name:     Name of the booked policy.
-        insurer:         Insurer/company name.
-        destination:     Travel destination.
-        travel_dates:    Travel dates string.
-        num_adults:      Number of adult travellers.
-        num_children:    Number of child travellers.
-        traveller_ages:  Ages as a string.
-        sum_insured:     Coverage amount.
-        premium:         Premium paid.
-        tool_context:    ADK tool context (provides user_id and session_id).
-        notes:           Any extra notes or traveler info.
-        addons:          List of addon keys already selected (if any).
-        status:          Booking status: 'pending_docs' (default if KYC pending) or 'complete'.
+        policy_name:      Name of the booked policy.
+        insurer:          Insurer/company name.
+        destination:      Travel destination.
+        travel_dates:     Travel dates string.
+        num_adults:       Number of adult travellers.
+        num_children:     Number of child travellers.
+        traveller_ages:   Ages as a string.
+        sum_insured:      Coverage amount.
+        premium:          Actual insurer premium to deduct in credits (e.g. '₹1,200').
+        tool_context:     ADK tool context (provides user_id and session_id).
+        notes:            Any extra notes or traveler info.
+        addons:           List of addon keys already selected (if any).
+        status:           Booking status: 'pending_docs' (default if KYC pending) or 'complete'.
+        agent_commission: Agent commission / markup amount (e.g. '₹500').
 
     Returns:
-        dict with ref_number and status.
+        dict with ref_number and status, or insufficient_credits error.
     """
     user_id = tool_context.user_id if hasattr(tool_context, "user_id") else ""
     session_id = tool_context.session_id if hasattr(tool_context, "session_id") else ""
+
+    # Check and deduct wallet credits (only actual insurer premium is deducted)
+    premium_num = parse_amount(premium)
+    if premium_num > 0:
+        success, wallet = deduct_wallet_credits(user_id, premium_num)
+        if not success:
+            return {
+                "status": "insufficient_credits",
+                "message": f"Cannot complete booking: Insufficient wallet credits. Required: ₹{premium_num:,.0f}, Available: ₹{wallet['balance']:,.0f}. Please top up your wallet credits to proceed.",
+                "available_credits": wallet["balance"],
+                "required_credits": premium_num,
+            }
+    else:
+        wallet = get_wallet(user_id)
 
     # Collect artifact filenames from this session if possible
     artifact_ids = []
@@ -82,8 +114,14 @@ async def save_booking(
         addons=addons or [],
         notes=notes,
         status=status or "pending_docs",
+        agent_commission=agent_commission or "",
     )
-    return {"status": "success", "ref_number": ref, "booking_status": status or "pending_docs"}
+    return {
+        "status": "success",
+        "ref_number": ref,
+        "booking_status": status or "pending_docs",
+        "remaining_credits": wallet["balance"],
+    }
 
 
 async def get_booking_details(
@@ -141,6 +179,7 @@ async def update_booking_details(
     destination: str = "",
     premium: str = "",
     addons: list = None,
+    agent_commission: str = "",
 ) -> dict:
     """
     Updates an existing booking record (e.g. status change, add notes, update dates, update addons/premium).
@@ -148,14 +187,15 @@ async def update_booking_details(
     Use this when the user wants to modify or annotate a booked policy.
 
     Args:
-        ref_number:   The booking reference (e.g. "BUD-A3F7K").
-        tool_context: ADK tool context.
-        status:       New status — e.g. "confirmed", "cancelled", "docs_received".
-        notes:        Notes to append or set.
-        travel_dates: Updated travel dates if changed.
-        destination:  Updated destination if changed.
-        premium:      Updated premium if addons changed the total.
-        addons:       Updated list of addon objects/keys if addons were added/removed.
+        ref_number:        The booking reference (e.g. "BUD-A3F7K").
+        tool_context:      ADK tool context.
+        status:            New status — e.g. "confirmed", "cancelled", "docs_received".
+        notes:             Notes to append or set.
+        travel_dates:      Updated travel dates if changed.
+        destination:       Updated destination if changed.
+        premium:           Updated premium if addons changed the total.
+        addons:            Updated list of addon objects/keys if addons were added/removed.
+        agent_commission:  Updated agent commission amount.
 
     Returns:
         dict with status.
@@ -173,6 +213,8 @@ async def update_booking_details(
         fields["premium"] = premium
     if addons is not None:
         fields["addons"] = addons
+    if agent_commission:
+        fields["agent_commission"] = agent_commission
 
     # Always sync the full artifact list from this session into the booking
     try:

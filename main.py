@@ -18,6 +18,7 @@ from google.adk.cli.service_registry import get_service_registry
 from google.adk.cli.utils.service_factory import create_artifact_service_from_options
 from data.store import load, save, FILES
 from data.bookings import get_booking, create_booking, update_booking
+from data.wallet import get_wallet, set_wallet_balance, add_wallet_credits
 
 load_dotenv()
 # Also load agent-level env so we have access to agent settings
@@ -337,6 +338,30 @@ def cancel_booking_endpoint(ref_number: str):
     if not updated:
         raise HTTPException(status_code=500, detail="Cancel failed")
     return {"status": "cancelled", "ref_number": ref_number}
+
+
+class WalletUpdateRequest(BaseModel):
+    balance: float
+
+
+class WalletTopupRequest(BaseModel):
+    amount: float
+
+
+@app.get("/wallet/{user_id}", summary="Get user wallet credit balance")
+def get_user_wallet_endpoint(user_id: str):
+    return get_wallet(user_id)
+
+
+@app.put("/wallet/{user_id}", summary="Set user wallet credit balance")
+def set_user_wallet_endpoint(user_id: str, req: WalletUpdateRequest):
+    return set_wallet_balance(user_id, req.balance)
+
+
+@app.post("/wallet/{user_id}/topup", summary="Top up user wallet credits")
+def topup_user_wallet_endpoint(user_id: str, req: WalletTopupRequest):
+    return add_wallet_credits(user_id, req.amount)
+
 
 
 if __name__ == "__main__":

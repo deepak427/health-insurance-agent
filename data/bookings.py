@@ -43,9 +43,13 @@ def _init():
                 notes        TEXT
             )
         """)
-        # Migrate: add addons column if it doesn't exist (existing installs)
+        # Migrate: add addons & agent_commission columns if they don't exist
         try:
             c.execute("ALTER TABLE bookings ADD COLUMN addons TEXT")
+        except Exception:
+            pass  # column already exists
+        try:
+            c.execute("ALTER TABLE bookings ADD COLUMN agent_commission TEXT")
         except Exception:
             pass  # column already exists
 
@@ -75,6 +79,7 @@ def create_booking(
     addons: Optional[list] = None,
     notes: str = "",
     status: str = "pending_docs",
+    agent_commission: str = "",
 ) -> str:
     """Create a booking record and return the reference number."""
     now = datetime.now(timezone.utc).isoformat()
@@ -92,8 +97,8 @@ def create_booking(
                 ref_number, created_at, updated_at, user_id, session_id,
                 policy_name, insurer, destination, travel_dates,
                 num_adults, num_children, traveller_ages,
-                sum_insured, premium, artifact_ids, addons, status, notes
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                sum_insured, premium, artifact_ids, addons, status, notes, agent_commission
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             ref, now, now, user_id, session_id,
             policy_name, insurer, destination, travel_dates,
@@ -101,7 +106,7 @@ def create_booking(
             sum_insured, premium,
             json.dumps(artifact_ids or []),
             json.dumps(addons or []),
-            status or "pending_docs", notes,
+            status or "pending_docs", notes, agent_commission or "",
         ))
     return ref
 
