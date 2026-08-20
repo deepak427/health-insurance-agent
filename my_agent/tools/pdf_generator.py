@@ -570,3 +570,91 @@ async def generate_booking_confirmation_pdf(
         "filename": filename,
         "version": version,
     }
+
+
+async def generate_quotation_comparison_pdf(
+    policies: list[dict],
+    destination: str,
+    travel_dates: str,
+    num_adults: int,
+    num_children: int,
+    traveller_ages: str,
+    tool_context: ToolContext,
+) -> dict:
+    """
+    Generates a policy comparison PDF for quotations showing multiple policy options side-by-side.
+    Use this when the user wants to compare policies or needs a quotation PDF.
+
+    Args:
+        policies:         List of policy dicts. Each should have: name, insurer, premium, sum_insured, highlights (list)
+        destination:      Travel destination
+        travel_dates:     Travel dates string
+        num_adults:       Number of adults
+        num_children:     Number of children
+        traveller_ages:   Ages as string
+        tool_context:     ADK tool context
+
+    Returns:
+        dict with status and filename
+    """
+    sections = [
+        {
+            "heading": "Trip Details",
+            "lines": [
+                f"- Destination: {destination}",
+                f"- Travel Dates: {travel_dates}",
+                f"- Travellers: {num_adults} adults, {num_children} children",
+                f"- Ages: {traveller_ages}",
+            ],
+        },
+    ]
+
+    # Add each policy as a section
+    for i, policy in enumerate(policies, 1):
+        name = policy.get("name", "Policy")
+        insurer = policy.get("insurer", "")
+        premium = policy.get("premium", "")
+        sum_insured = policy.get("sum_insured", "")
+        highlights = policy.get("highlights", [])
+
+        lines = []
+        if insurer:
+            lines.append(f"- Insurer: {insurer}")
+        if premium:
+            lines.append(f"- Premium: ₹{premium}")
+        if sum_insured:
+            lines.append(f"- Coverage: {sum_insured}")
+
+        # Add highlights as bullet points
+        if highlights:
+            lines.append("Key Benefits:")
+            for h in highlights:
+                lines.append(f"  * {h}")
+
+        sections.append({
+            "heading": f"Option {i}: {name}",
+            "lines": lines,
+        })
+
+    # Add disclaimer
+    sections.append({
+        "heading": "Important Notes",
+        "lines": [
+            "- All premiums are estimates and subject to insurer confirmation.",
+            "- Final pricing may vary based on additional underwriting details.",
+            "- Please review policy documents for full coverage details and exclusions.",
+        ],
+    })
+
+    pdf_bytes = _build_pdf("Travel Insurance\nQuotation", sections)
+
+    artifact = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
+    filename = f"quotation_comparison_{destination.lower().replace(' ', '_')[:20]}.pdf"
+    version = await tool_context.save_artifact(filename=filename, artifact=artifact)
+
+    return {
+        "status": "success",
+        "filename": filename,
+        "version": version,
+        "instruction": "Tell the user their quotation comparison PDF is ready and attached.",
+    }
