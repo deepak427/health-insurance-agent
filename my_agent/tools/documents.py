@@ -1,3 +1,7 @@
+import base64
+import json
+import os
+from google import genai
 from google.adk.tools import ToolContext
 from google.genai import types as genai_types
 
@@ -11,7 +15,7 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
         filename (str): Name of the uploaded document artifact to analyze.
 
     Returns:
-        dict: Document metadata and content ready for analysis.
+        dict: Document analysis and key insights.
     """
     artifact = await tool_context.load_artifact(filename=filename)
 
@@ -25,13 +29,38 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
     if not inline or not inline.data:
         return {"status": "error", "message": "Document appears to be empty."}
 
-    return {
-        "status": "success",
-        "filename": filename,
-        "mime_type": inline.mime_type,
-        "message": "Document loaded. Analyze its contents for coverage, exclusions, premiums, and key dates.",
-        "artifact": artifact,
-    }
+    data_bytes = inline.data
+    if isinstance(data_bytes, str):
+        try:
+            data_bytes = base64.b64decode(data_bytes)
+        except Exception:
+            pass
+
+    # Extract text summary directly using genai client to avoid dumping huge binary base64 in conversation history
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        client = genai.Client(api_key=api_key) if api_key else genai.Client()
+        prompt = (
+            "Analyze this uploaded insurance document. "
+            "Extract key policy coverage amounts, deductibles, exclusions, emergency contact lines, "
+            "and claim procedures. Present a concise bulleted summary."
+        )
+        part = genai_types.Part.from_bytes(data=data_bytes, mime_type=inline.mime_type or "application/pdf")
+        response = client.models.generate_content(
+            model='gemini-3.5-flash',
+            contents=[part, prompt]
+        )
+        return {
+            "status": "success",
+            "filename": filename,
+            "analysis": response.text.strip(),
+        }
+    except Exception as e:
+        return {
+            "status": "success",
+            "filename": filename,
+            "message": f"Document '{filename}' ({inline.mime_type}) loaded. Summary could not be pre-generated: {e}",
+        }
 
 
 async def extract_traveler_details_from_document(filename: str, tool_context: ToolContext) -> dict:
@@ -40,13 +69,11 @@ async def extract_traveler_details_from_document(filename: str, tool_context: To
     Use this when the user uploads a document and you need to extract booking details like name, age,
     address, date of birth, document numbers, etc.
 
-    The model will analyze the document and extract structured information that can be used for booking.
-
     Args:
         filename (str): Name of the uploaded document artifact (image or PDF).
 
     Returns:
-        dict: Contains the document artifact for model analysis and instructions.
+        dict: Extracted traveler identity information.
     """
     artifact = await tool_context.load_artifact(filename=filename)
 
@@ -60,10 +87,39 @@ async def extract_traveler_details_from_document(filename: str, tool_context: To
     if not inline or not inline.data:
         return {"status": "error", "message": "Document appears to be empty."}
 
-    return {
-        "status": "success",
-        "filename": filename,
-        "mime_type": inline.mime_type,
-        "message": "Document loaded. Extract traveler details: full name, date of birth, age, gender, address, document number, document type. Format the extracted details clearly.",
-        "artifact": artifact,
-    }
+    data_bytes = inline.data
+    if isinstance(data_bytes, str):
+        try:
+            data_bytes = base64.b64decode(data_bytes)
+        except Exception:
+            pass
+
+    # Extract structured traveler details directly using genai client
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        client = genai.Client(api_key=api_key) if api_key else genai.Client()
+        prompt = (
+            "You are an expert KYC document parser. "
+            "Examine this document (Passport, Aadhaar, PAN, or Ticket). "
+            "Extract all traveler information in concise JSON format: "
+            "full_name, date_of_birth, age, gender, document_type, document_number, "
+            "nationality, address, destination, travel_dates. "
+            "Return ONLY the JSON object."
+        )
+        part = genai_types.Part.from_bytes(data=data_bytes, mime_type=inline.mime_type or "image/jpeg")
+        response = client.models.generate_content(
+            model='gemini-3.5-flash',
+            contents=[part, prompt]
+        )
+        return {
+            "status": "success",
+            "filename": filename,
+            "extracted_details": response.text.strip(),
+        }
+    except Exception as e:
+        return {
+            "status": "success",
+            "filename": filename,
+            "message": f"Document '{filename}' ({inline.mime_type}) loaded.",
+            "error": str(e),
+        }
