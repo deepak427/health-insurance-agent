@@ -1,6 +1,12 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
 from fpdf import FPDF
 import google.genai.types as types
 from google.adk.tools import ToolContext
+from data.wallet import get_wallet, deduct_wallet_credits
+from data.bookings import update_booking
 
 
 def _safe(text: str) -> str:
@@ -535,10 +541,19 @@ async def generate_booking_confirmation_pdf(
     Returns:
         dict with status and filename.
     """
+    user_id = tool_context.user_id if hasattr(tool_context, "user_id") else ""
     base_num = _parse_num(premium)
     comm_num = _parse_num(agent_commission)
     if comm_num <= 0 and base_num > 0:
         comm_num = round(base_num * 0.40)
+
+    wallet = get_wallet(user_id)
+
+    if booking_ref:
+        try:
+            update_booking(booking_ref, status="complete")
+        except Exception:
+            pass
 
     total_client = base_num + comm_num
     if base_num > 0:
@@ -621,6 +636,8 @@ async def generate_booking_confirmation_pdf(
         "status": "success",
         "filename": filename,
         "version": version,
+        "remaining_credits": wallet["balance"],
+        "deducted_credits": base_num,
     }
 
 

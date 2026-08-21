@@ -44,11 +44,12 @@ async def save_booking(
     tool_context: ToolContext,
     notes: str = "",
     addons: list = None,
-    status: str = "pending_docs",
+    status: str = "complete",
     agent_commission: str = "",
 ) -> dict:
     """
-    Saves a booking record to the database and deducts the required premium credits from user wallet.
+    Saves a completed policy booking to the database and deducts the required premium credits from user wallet.
+    Only call this when ALL details (trip details + traveler KYC details/documents for every traveler) are collected.
     Returns a reference number on success.
 
     If wallet credits are insufficient to cover the premium, NO booking is created and an
@@ -65,18 +66,17 @@ async def save_booking(
         sum_insured:      Coverage amount.
         premium:          Actual insurer premium to deduct in credits (e.g. '₹1,200').
         tool_context:     ADK tool context (provides user_id and session_id).
-        notes:            Any extra notes or traveler info.
+        notes:            Traveler names, DOBs, KYC details, or extra notes.
         addons:           List of addon keys already selected (if any).
-        status:           Booking status: 'pending_docs' (default if KYC pending) or 'complete'.
-        agent_commission: Agent commission / markup amount (e.g. '₹500').
+        status:           Booking status: 'complete' (default).
+        agent_commission: Agent commission / markup amount (e.g. '₹500'). Auto-calculated at 40% if not given.
 
     Returns:
-        dict with ref_number and status, or insufficient_credits error.
+        dict with ref_number, status, and remaining_credits, or insufficient_credits error.
     """
     user_id = tool_context.user_id if hasattr(tool_context, "user_id") else ""
     session_id = tool_context.session_id if hasattr(tool_context, "session_id") else ""
 
-    # Check and deduct wallet credits (only actual insurer premium is deducted)
     premium_num = parse_amount(premium)
     if premium_num > 0:
         success, wallet = deduct_wallet_credits(user_id, premium_num)
@@ -101,6 +101,8 @@ async def save_booking(
     if not agent_commission and premium_num > 0:
         agent_commission = f"₹{round(premium_num * 0.40):,.0f}"
 
+    booking_status = status or "complete"
+
     ref = create_booking(
         user_id=user_id,
         session_id=session_id,
@@ -116,14 +118,16 @@ async def save_booking(
         artifact_ids=artifact_ids,
         addons=addons or [],
         notes=notes,
-        status=status or "pending_docs",
+        status=booking_status,
         agent_commission=agent_commission or "",
     )
     return {
         "status": "success",
         "ref_number": ref,
-        "booking_status": status or "pending_docs",
+        "booking_status": booking_status,
         "remaining_credits": wallet["balance"],
+        "deducted_credits": premium_num,
+        "agent_commission": agent_commission,
     }
 
 
