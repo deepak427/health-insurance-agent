@@ -1,4 +1,4 @@
-﻿"""
+"""
 Campaigns database operations — manages admin broadcast campaigns, audience filtering,
 scheduling, and delivery to insurance agents/users.
 """
@@ -127,9 +127,16 @@ def create_campaign(
     scheduled_at: Optional[str] = None,
 ) -> dict:
     """Create and schedule a new campaign."""
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
     cid = f"camp_{uuid.uuid4().hex[:10]}"
-    sched = scheduled_at or now
+    
+    if scheduled_at:
+        sched_dt = _parse_iso_to_utc(scheduled_at) or now_dt
+    else:
+        sched_dt = now_dt
+
+    sched_iso = sched_dt.isoformat()
+    now_iso = now_dt.isoformat()
 
     targets = evaluate_target_users(filter_type, filter_value)
 
@@ -140,7 +147,7 @@ def create_campaign(
                 scheduled_at, status, target_count, delivered_count,
                 created_at, sent_at
             ) VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, 0, ?, NULL)
-        """, (cid, title, message, filter_type, filter_value, sched, len(targets), now))
+        """, (cid, title, message, filter_type, filter_value, sched_iso, len(targets), now_iso))
 
     return get_campaign(cid)
 
@@ -186,12 +193,8 @@ def execute_campaign(campaign_id: str) -> dict:
         delivered = 0
         for uid in targets:
             mid = f"cmsg_{uuid.uuid4().hex[:10]}"
-            # Find latest session for user if any
-            srow = c.execute(
-                "SELECT session_id FROM bookings WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-                (uid,),
-            ).fetchone()
-            sid = srow["session_id"] if srow else f"session_{uid}"
+            # Dedicated campaign chat session per campaign
+            sid = f"session_camp_{campaign_id[:8]}"
 
             c.execute("""
                 INSERT INTO campaign_messages (
@@ -209,15 +212,38 @@ def execute_campaign(campaign_id: str) -> dict:
     return get_campaign(campaign_id)
 
 
+def _parse_iso_to_utc(iso_str: Optional[str]) -> Optional[datetime]:
+    if not iso_str:
+        return None
+    clean = str(iso_str).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        try:
+            from dateutil import parser
+            dt = parser.parse(clean)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            return None
+
+
 def get_due_campaigns() -> List[dict]:
     """Find campaigns that are scheduled and due for execution."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     with _conn() as c:
-        rows = c.execute(
-            "SELECT * FROM campaigns WHERE status = 'scheduled' AND scheduled_at <= ?",
-            (now,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        rows = c.execute("SELECT * FROM campaigns WHERE status = 'scheduled'").fetchall()
+        due = []
+        for r in rows:
+            d = dict(r)
+            sched_dt = _parse_iso_to_utc(d.get("scheduled_at"))
+            if sched_dt and sched_dt <= now:
+                due.append(d)
+        return due
 
 
 def get_user_campaign_messages(user_id: str, unseen_only: bool = False) -> List[dict]:
