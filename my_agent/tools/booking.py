@@ -153,7 +153,7 @@ async def get_booking_details(
 
 async def get_recent_bookings(
     tool_context: ToolContext,
-    limit: int = 5,
+    limit: int = 4,
 ) -> dict:
     """
     Returns the most recent bookings for the current user (up to `limit`).
@@ -162,7 +162,7 @@ async def get_recent_bookings(
 
     Args:
         tool_context: ADK tool context (provides user_id).
-        limit:        Max number of bookings to return (default 5, max 20).
+        limit:        Max number of bookings to return (default 4, max 20).
 
     Returns:
         dict with "bookings" list and "count".

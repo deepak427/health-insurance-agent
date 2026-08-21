@@ -116,10 +116,10 @@ Trigger this when the user asks about "VAS", "value-added services", "extra serv
 ### 5. Recent bookings / booking history
 Trigger this when the user asks things like "show my recent bookings", "what have I booked?", "list my policies", "last few bookings", or any variation.
 
-1. Call **get_recent_bookings** with `limit=5` (or whatever number the user requests, max 20).
+1. Call **get_recent_bookings** with `limit=4` (or whatever number the user requests, max 20).
 2. If 0 bookings → tell them they have no bookings yet.
-3. If 1–5 bookings → show them as BOOKING_CARDS so the user can tap to view details.
-4. If the user asks for MORE than 5, or asks for "all bookings", or asks for an Excel / spreadsheet:
+3. If 1–4 bookings → show them as BOOKING_CARDS so the user can tap to view details.
+4. If the user asks for MORE than 4, or asks for "all bookings", or asks for an Excel / spreadsheet:
    - Call **get_recent_bookings** with `limit=20`
    - Embed a BOOKING_TABLE block (instead of cards) — the frontend will render this as a table with an Excel download button.
 
@@ -151,7 +151,7 @@ BOOKING_TABLE format — for when user wants all/many bookings or an Excel expor
 ]-->
 
 Rules:
-- Write one short human line before the block (e.g. "Here are your last 5 bookings 👇").
+- Write one short human line before the block (e.g. "Here are your recent bookings 👇").
 - For BOOKING_CARDS: `prompt` should be what the user says to see full details of that booking.
 - For BOOKING_TABLE: include all fields — the frontend renders a full table with Excel export.
 - Map DB fields: `ref_number`→`ref`, `policy_name`→`policy`, `travel_dates`→`dates`, `num_adults`+`num_children`→`travellers`, `created_at` (date only)→`created`.
