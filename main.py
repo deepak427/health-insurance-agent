@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
+from typing import Optional, List
 from google.genai import types as genai_types
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.cli.service_registry import get_service_registry
@@ -19,6 +20,12 @@ from google.adk.cli.utils.service_factory import create_artifact_service_from_op
 from data.store import load, save, FILES
 from data.bookings import get_booking, create_booking, update_booking
 from data.wallet import get_wallet, set_wallet_balance, add_wallet_credits
+from data.campaigns import (
+    create_campaign, list_campaigns, get_campaign, delete_campaign,
+    execute_campaign, get_due_campaigns, get_user_campaign_messages,
+    mark_campaign_messages_seen, evaluate_target_users, get_all_users
+)
+import asyncio
 
 load_dotenv()
 # Also load agent-level env so we have access to agent settings
@@ -554,6 +561,88 @@ def get_dashboard_stats_endpoint(user_id: str = None):
         "recent_activities": recent_activities[:10],
     }
 
+
+
+# ── Campaign Engine & Background Scheduler ────────────────────────────────────
+async def _campaign_scheduler_loop():
+    """Background cron job that checks and triggers due campaigns every 10 seconds."""
+    while True:
+        try:
+            due = get_due_campaigns()
+            for c in due:
+                print(f"[campaign scheduler] Triggering scheduled campaign: {c['id']} - {c['title']}")
+                execute_campaign(c["id"])
+        except Exception as e:
+            print(f"[campaign scheduler error]: {e}")
+        await asyncio.sleep(10)
+
+
+@app.on_event("startup")
+async def start_campaign_scheduler():
+    asyncio.create_task(_campaign_scheduler_loop())
+
+
+class CreateCampaignRequest(BaseModel):
+    title: str
+    message: str
+    filter_type: str = "all"
+    filter_value: float = 0.0
+    scheduled_at: Optional[str] = None
+
+
+@app.get("/campaigns", summary="List all campaigns")
+def list_campaigns_endpoint():
+    return {"campaigns": list_campaigns()}
+
+
+@app.post("/campaigns", summary="Create and schedule a new campaign")
+def create_campaign_endpoint(req: CreateCampaignRequest):
+    camp = create_campaign(
+        title=req.title,
+        message=req.message,
+        filter_type=req.filter_type,
+        filter_value=req.filter_value,
+        scheduled_at=req.scheduled_at,
+    )
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    # If scheduled for now or in the past, execute immediately
+    if not req.scheduled_at or req.scheduled_at <= now:
+        camp = execute_campaign(camp["id"])
+    return camp
+
+
+@app.post("/campaigns/{campaign_id}/run", summary="Run a campaign immediately")
+def run_campaign_endpoint(campaign_id: str):
+    res = execute_campaign(campaign_id)
+    if not res or res.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return res
+
+
+@app.delete("/campaigns/{campaign_id}", summary="Delete a campaign")
+def delete_campaign_endpoint(campaign_id: str):
+    success = delete_campaign(campaign_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"status": "deleted"}
+
+
+@app.get("/campaign-messages/{user_id}", summary="Get campaign messages for a user")
+def get_campaign_messages_endpoint(user_id: str, unseen_only: bool = False):
+    msgs = get_user_campaign_messages(user_id, unseen_only=unseen_only)
+    return {"messages": msgs}
+
+
+class MarkSeenRequest(BaseModel):
+    message_ids: Optional[list[str]] = None
+
+
+@app.post("/campaign-messages/{user_id}/mark-seen", summary="Mark campaign messages as seen")
+def mark_seen_endpoint(user_id: str, req: Optional[MarkSeenRequest] = None):
+    msg_ids = req.message_ids if req else None
+    mark_campaign_messages_seen(user_id, msg_ids)
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
