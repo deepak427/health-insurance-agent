@@ -537,19 +537,21 @@ async def generate_booking_confirmation_pdf(
     """
     base_num = _parse_num(premium)
     comm_num = _parse_num(agent_commission)
+    if comm_num <= 0 and base_num > 0:
+        comm_num = round(base_num * 0.40)
 
-    if comm_num > 0 and base_num > 0:
-        total_client = base_num + comm_num
+    total_client = base_num + comm_num
+    if base_num > 0:
         coverage_lines = [
             f"- Sum Insured: {sum_insured}",
-            f"- Insurer Net Premium (Actual): ₹{base_num:,.0f}",
-            f"- Agent Commission / Markup: ₹{comm_num:,.0f}",
-            f"- Total Client Price (Final): ₹{total_client:,.0f}",
+            f"- Gross Pay (Insurer Premium): ₹{base_num:,.0f}",
+            f"- Agent Commission (40%): ₹{comm_num:,.0f}",
+            f"- Net Pay (Customer Payable Amount): ₹{total_client:,.0f}",
         ]
     else:
         coverage_lines = [
             f"- Sum Insured: {sum_insured}",
-            f"- Premium: {premium if premium.startswith('₹') or not base_num else f'₹{base_num:,.0f}'}",
+            f"- Premium: {premium}",
         ]
 
     sections = [
@@ -573,7 +575,7 @@ async def generate_booking_confirmation_pdf(
             ],
         },
         {
-            "heading": "Coverage & Premium Breakdown" if comm_num > 0 else "Coverage & Premium",
+            "heading": "Coverage & Premium Breakdown",
             "lines": coverage_lines,
         },
     ]
@@ -671,7 +673,12 @@ async def generate_quotation_comparison_pdf(
         if insurer:
             lines.append(f"- Insurer: {insurer}")
         if premium:
-            lines.append(f"- Premium: ₹{premium}")
+            base_p = _parse_num(premium)
+            comm_p = round(base_p * 0.40)
+            net_p = base_p + comm_p
+            lines.append(f"- Gross Pay (Insurer Premium): ₹{base_p:,.0f}")
+            lines.append(f"- Agent Commission (40%): ₹{comm_p:,.0f}")
+            lines.append(f"- Net Pay (Customer Payable): ₹{net_p:,.0f}")
         if sum_insured:
             lines.append(f"- Coverage: {sum_insured}")
 

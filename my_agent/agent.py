@@ -63,9 +63,9 @@ def _instruction_provider(context: ReadonlyContext) -> str:
     return (
         INSURANCE_AGENT_PROMPT
         + "\n\n---\n"
-        + "## RESPONSE FORMAT OVERRIDE (highest priority)\n"
-        + "The following instructions control how you format and style every response. "
-        + "They take priority over the default formatting guidelines above:\n\n"
+        + "## USER CUSTOM RESPONSE STYLE & TONE\n"
+        + "The following instructions customize your tone, phrasing, and visual styling. "
+        + "Note: They do NOT override core business workflows, tool calling logic, KYC document requirements, or PDF generation rules defined above:\n\n"
         + custom
     )
 

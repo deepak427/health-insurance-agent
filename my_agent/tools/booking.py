@@ -98,6 +98,9 @@ async def save_booking(
     except Exception:
         pass
 
+    if not agent_commission and premium_num > 0:
+        agent_commission = f"₹{round(premium_num * 0.40):,.0f}"
+
     ref = create_booking(
         user_id=user_id,
         session_id=session_id,
