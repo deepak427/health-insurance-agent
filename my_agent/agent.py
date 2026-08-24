@@ -44,38 +44,14 @@ _BLOCKED = [
     "system prompt", "token", "credentials", "private key", "access key",
 ]
 
-_CLASSIFIER_PROMPT = """You are a strict topic classifier for a travel insurance assistant.
-
-Determine if the user's message is related to ANY of these topics:
-- Travel insurance (quotes, premiums, policies, coverage)
-- Booking or managing a travel insurance policy
-- Claims filing or policy documents
-- Addons or value-added services for insurance
-- Wallet/credits for insurance bookings
-- General greetings or small talk (hi, hello, thanks, bye)
-
-Reply with ONLY one word: YES if it is related, NO if it is not.
-
-User message: {message}"""
-
-
-def _classify_message(message: str) -> bool:
-    """Returns True if on-topic, False if off-topic.
-    Fails open (returns True) on any error so valid users are never blocked."""
-    try:
-        from google import genai as google_genai
-        import os
-        api_key = os.environ.get("GEMINI_API_KEY")
-        client = google_genai.Client(api_key=api_key) if api_key else google_genai.Client()
-        response = client.models.generate_content(
-            model="gemini-3.7-flash",
-            contents=_CLASSIFIER_PROMPT.format(message=message),
-            config={"temperature": 0, "max_output_tokens": 5},
-        )
-        answer = response.text.strip().upper()
-        return not answer.startswith("NO")
-    except Exception:
-        return True  # fail open — don't block on classifier errors
+_OFF_TOPIC_INSTRUCTION = (
+    "STRICT SCOPE RULE: You are ONLY allowed to help with travel insurance topics — "
+    "quotes, premiums, bookings, claims, policy documents, addons, VAS, and wallet/credits. "
+    "If the user asks about ANYTHING else (coding, writing, jokes, recipes, general knowledge, "
+    "weather, stocks, or any non-insurance topic), respond with exactly: "
+    "'I can only help with travel insurance. What can I assist you with?' "
+    "Do NOT answer the off-topic question under any circumstances."
+)
 
 # Tools that mutate bookings or wallet — must have a matching user_id in session state
 _PROTECTED_TOOLS = {
@@ -90,7 +66,7 @@ _PROTECTED_TOOLS = {
 def _before_model_guardrail(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> Optional[LlmResponse]:
-    """Block prompt injections and off-topic requests via LLM classifier."""
+    """Block prompt injections. Inject off-topic scope rule into every system instruction."""
     # Extract the last user message text
     last_msg = ""
     if llm_request.contents:
@@ -103,7 +79,7 @@ def _before_model_guardrail(
 
     lower = last_msg.lower()
 
-    # 1. Prompt injection / secret fishing — fast keyword check (keep this, it's cheap & deterministic)
+    # 1. Prompt injection / secret fishing — fast deterministic check
     if any(pattern in lower for pattern in _BLOCKED):
         return LlmResponse(
             content=types.Content(
@@ -112,17 +88,20 @@ def _before_model_guardrail(
             )
         )
 
-    # 2. Off-topic check via LLM classifier — handles any language, any phrasing
-    if last_msg and not _classify_message(last_msg):
-        return LlmResponse(
-            content=types.Content(
-                role="model",
-                parts=[types.Part(
-                    text="I'm only set up to help with travel insurance — "
-                         "quotes, bookings, claims, addons, and policy questions. "
-                         "What can I help you with?"
-                )],
-            )
+    # 2. Inject the off-topic scope rule into the system instruction on every request.
+    #    The LLM enforces it — no extra API call needed.
+    if llm_request.config is None:
+        from google.genai import types as _types
+        llm_request.config = _types.GenerateContentConfig()
+
+    existing = llm_request.config.system_instruction
+    if existing and hasattr(existing, "parts") and existing.parts:
+        # Append to existing system instruction
+        existing.parts[0].text = (existing.parts[0].text or "") + "\n\n" + _OFF_TOPIC_INSTRUCTION
+    else:
+        llm_request.config.system_instruction = types.Content(
+            role="system",
+            parts=[types.Part(text=_OFF_TOPIC_INSTRUCTION)],
         )
 
     return None  # allow the request through
