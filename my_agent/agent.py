@@ -63,11 +63,14 @@ def _classify_message(message: str) -> bool:
     """Returns True if on-topic, False if off-topic.
     Fails open (returns True) on any error so valid users are never blocked."""
     try:
-        import google.generativeai as genai
-        client = genai.GenerativeModel("gemini-3.7-flash")
-        response = client.generate_content(
-            _CLASSIFIER_PROMPT.format(message=message),
-            generation_config={"temperature": 0, "max_output_tokens": 5},
+        from google import genai as google_genai
+        import os
+        api_key = os.environ.get("GEMINI_API_KEY")
+        client = google_genai.Client(api_key=api_key) if api_key else google_genai.Client()
+        response = client.models.generate_content(
+            model="gemini-3.7-flash",
+            contents=_CLASSIFIER_PROMPT.format(message=message),
+            config={"temperature": 0, "max_output_tokens": 5},
         )
         answer = response.text.strip().upper()
         return not answer.startswith("NO")
