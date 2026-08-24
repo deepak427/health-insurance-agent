@@ -160,7 +160,7 @@ def _instruction_provider(context: ReadonlyContext) -> str:
 
 
 root_agent = Agent(
-    model='gemini-3.7-flash',
+    model='gemini-3.5-flash',
     name='insurance_support_agent',
     description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
     instruction=_instruction_provider,
