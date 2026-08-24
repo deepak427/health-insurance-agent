@@ -44,15 +44,35 @@ _BLOCKED = [
     "system prompt", "token", "credentials", "private key", "access key",
 ]
 
-# Off-topic keywords — anything clearly outside insurance / booking domain
-_OFF_TOPIC = [
-    "write a poem", "write me a poem", "tell me a joke", "write a joke",
-    "write a story", "write code", "debug my code", "write an essay",
-    "who is the president", "what is the weather", "stock price",
-    "recipe", "how to cook", "relationship advice", "medical diagnosis",
-    "legal advice", "financial advice", "crypto", "bitcoin",
-    "play a game", "draw", "generate image",
-]
+_CLASSIFIER_PROMPT = """You are a strict topic classifier for a travel insurance assistant.
+
+Determine if the user's message is related to ANY of these topics:
+- Travel insurance (quotes, premiums, policies, coverage)
+- Booking or managing a travel insurance policy
+- Claims filing or policy documents
+- Addons or value-added services for insurance
+- Wallet/credits for insurance bookings
+- General greetings or small talk (hi, hello, thanks, bye)
+
+Reply with ONLY one word: YES if it is related, NO if it is not.
+
+User message: {message}"""
+
+
+def _classify_message(message: str) -> bool:
+    """Returns True if on-topic, False if off-topic.
+    Fails open (returns True) on any error so valid users are never blocked."""
+    try:
+        import google.generativeai as genai
+        client = genai.GenerativeModel("gemini-3.7-flash")
+        response = client.generate_content(
+            _CLASSIFIER_PROMPT.format(message=message),
+            generation_config={"temperature": 0, "max_output_tokens": 5},
+        )
+        answer = response.text.strip().upper()
+        return not answer.startswith("NO")
+    except Exception:
+        return True  # fail open — don't block on classifier errors
 
 # Tools that mutate bookings or wallet — must have a matching user_id in session state
 _PROTECTED_TOOLS = {
@@ -67,7 +87,7 @@ _PROTECTED_TOOLS = {
 def _before_model_guardrail(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> Optional[LlmResponse]:
-    """Block prompt injections and clearly off-topic requests."""
+    """Block prompt injections and off-topic requests via LLM classifier."""
     # Extract the last user message text
     last_msg = ""
     if llm_request.contents:
@@ -80,7 +100,7 @@ def _before_model_guardrail(
 
     lower = last_msg.lower()
 
-    # 1. Prompt injection / secret fishing check
+    # 1. Prompt injection / secret fishing — fast keyword check (keep this, it's cheap & deterministic)
     if any(pattern in lower for pattern in _BLOCKED):
         return LlmResponse(
             content=types.Content(
@@ -89,8 +109,8 @@ def _before_model_guardrail(
             )
         )
 
-    # 2. Clearly off-topic request check
-    if any(pattern in lower for pattern in _OFF_TOPIC):
+    # 2. Off-topic check via LLM classifier — handles any language, any phrasing
+    if last_msg and not _classify_message(last_msg):
         return LlmResponse(
             content=types.Content(
                 role="model",
@@ -158,7 +178,7 @@ def _instruction_provider(context: ReadonlyContext) -> str:
 
 
 root_agent = Agent(
-    model='gemini-3.5-flash',
+    model='gemini-3.7-flash',
     name='insurance_support_agent',
     description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
     instruction=_instruction_provider,

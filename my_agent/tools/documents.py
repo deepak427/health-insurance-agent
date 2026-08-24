@@ -47,7 +47,7 @@ async def analyze_insurance_document(filename: str, tool_context: ToolContext) -
         )
         part = genai_types.Part.from_bytes(data=data_bytes, mime_type=inline.mime_type or "application/pdf")
         response = client.models.generate_content(
-            model='gemini-3.5-flash',
+            model='gemini-3.7-flash',
             contents=[part, prompt]
         )
         return {
@@ -108,7 +108,7 @@ async def extract_traveler_details_from_document(filename: str, tool_context: To
         )
         part = genai_types.Part.from_bytes(data=data_bytes, mime_type=inline.mime_type or "image/jpeg")
         response = client.models.generate_content(
-            model='gemini-3.5-flash',
+            model='gemini-3.7-flash',
             contents=[part, prompt]
         )
         return {
