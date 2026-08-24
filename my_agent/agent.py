@@ -44,14 +44,6 @@ _BLOCKED = [
     "system prompt", "token", "credentials", "private key", "access key",
 ]
 
-_OFF_TOPIC_INSTRUCTION = (
-    "STRICT SCOPE RULE: You are ONLY allowed to help with travel insurance topics — "
-    "quotes, premiums, bookings, claims, policy documents, addons, VAS, and wallet/credits. "
-    "If the user asks about ANYTHING else (coding, writing, jokes, recipes, general knowledge, "
-    "weather, stocks, or any non-insurance topic), respond with exactly: "
-    "'I can only help with travel insurance. What can I assist you with?' "
-    "Do NOT answer the off-topic question under any circumstances."
-)
 
 # Tools that mutate bookings or wallet — must have a matching user_id in session state
 _PROTECTED_TOOLS = {
@@ -66,8 +58,7 @@ _PROTECTED_TOOLS = {
 def _before_model_guardrail(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> Optional[LlmResponse]:
-    """Block prompt injections. Inject off-topic scope rule into every system instruction."""
-    # Extract the last user message text
+    """Block prompt injections only. Off-topic rule is enforced via the system prompt."""
     last_msg = ""
     if llm_request.contents:
         for content in reversed(llm_request.contents):
@@ -79,29 +70,12 @@ def _before_model_guardrail(
 
     lower = last_msg.lower()
 
-    # 1. Prompt injection / secret fishing — fast deterministic check
     if any(pattern in lower for pattern in _BLOCKED):
         return LlmResponse(
             content=types.Content(
                 role="model",
                 parts=[types.Part(text="Sorry, I can't help with that.")],
             )
-        )
-
-    # 2. Inject the off-topic scope rule into the system instruction on every request.
-    #    The LLM enforces it — no extra API call needed.
-    if llm_request.config is None:
-        from google.genai import types as _types
-        llm_request.config = _types.GenerateContentConfig()
-
-    existing = llm_request.config.system_instruction
-    if existing and hasattr(existing, "parts") and existing.parts:
-        # Append to existing system instruction
-        existing.parts[0].text = (existing.parts[0].text or "") + "\n\n" + _OFF_TOPIC_INSTRUCTION
-    else:
-        llm_request.config.system_instruction = types.Content(
-            role="system",
-            parts=[types.Part(text=_OFF_TOPIC_INSTRUCTION)],
         )
 
     return None  # allow the request through
