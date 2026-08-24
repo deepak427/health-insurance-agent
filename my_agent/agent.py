@@ -1,8 +1,14 @@
 import json
 import os
+from typing import Any, Dict, Optional
 from google.adk.agents import Agent
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.models import LlmRequest, LlmResponse
+from google.adk.tools import BaseTool
+from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.load_artifacts_tool import LoadArtifactsTool
+from google.genai import types
 
 from .prompt import INSURANCE_AGENT_PROMPT
 from .tools import (
@@ -37,6 +43,87 @@ _BLOCKED = [
     "ignore previous", "ignore all", "disregard", "forget instructions",
     "system prompt", "token", "credentials", "private key", "access key",
 ]
+
+# Off-topic keywords — anything clearly outside insurance / booking domain
+_OFF_TOPIC = [
+    "write a poem", "write me a poem", "tell me a joke", "write a joke",
+    "write a story", "write code", "debug my code", "write an essay",
+    "who is the president", "what is the weather", "stock price",
+    "recipe", "how to cook", "relationship advice", "medical diagnosis",
+    "legal advice", "financial advice", "crypto", "bitcoin",
+    "play a game", "draw", "generate image",
+]
+
+# Tools that mutate bookings or wallet — must have a matching user_id in session state
+_PROTECTED_TOOLS = {
+    "save_booking",
+    "apply_addon_to_booking",
+    "apply_vas_to_booking",
+    "update_booking_details",
+}
+
+
+# ── Guardrail 1: screen user input before it reaches the LLM ──────────────────
+def _before_model_guardrail(
+    callback_context: CallbackContext, llm_request: LlmRequest
+) -> Optional[LlmResponse]:
+    """Block prompt injections and clearly off-topic requests."""
+    # Extract the last user message text
+    last_msg = ""
+    if llm_request.contents:
+        for content in reversed(llm_request.contents):
+            if content.role == "user" and content.parts:
+                last_msg = " ".join(
+                    p.text for p in content.parts if hasattr(p, "text") and p.text
+                )
+                break
+
+    lower = last_msg.lower()
+
+    # 1. Prompt injection / secret fishing check
+    if any(pattern in lower for pattern in _BLOCKED):
+        return LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[types.Part(text="Sorry, I can't help with that.")],
+            )
+        )
+
+    # 2. Clearly off-topic request check
+    if any(pattern in lower for pattern in _OFF_TOPIC):
+        return LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[types.Part(
+                    text="I'm only set up to help with travel insurance — "
+                         "quotes, bookings, claims, addons, and policy questions. "
+                         "What can I help you with?"
+                )],
+            )
+        )
+
+    return None  # allow the request through
+
+
+# ── Guardrail 2: validate user_id before mutating tools execute ───────────────
+def _before_tool_guardrail(
+    tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
+) -> Optional[Dict]:
+    """Ensure mutating tool calls are only made for the session's own user."""
+    if tool.name not in _PROTECTED_TOOLS:
+        return None  # not a protected tool — allow
+
+    session_user_id = tool_context.state.get("user_id") or tool_context.state.get("userId")
+    arg_user_id = args.get("user_id") or args.get("userId")
+
+    # If the session carries a user_id, the tool arg must match it
+    if session_user_id and arg_user_id and session_user_id != arg_user_id:
+        return {
+            "status": "error",
+            "message": "Unauthorized: user mismatch. Action blocked.",
+        }
+
+    return None  # allow
 
 
 def _load_response_prompt() -> str:
@@ -75,6 +162,8 @@ root_agent = Agent(
     name='insurance_support_agent',
     description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
     instruction=_instruction_provider,
+    before_model_callback=_before_model_guardrail,
+    before_tool_callback=_before_tool_guardrail,
     tools=[
         get_insurance_faq,
         estimate_premium,
