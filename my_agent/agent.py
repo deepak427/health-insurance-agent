@@ -8,6 +8,7 @@ from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 from google.adk.apps.app import App, EventsCompactionConfig
+from google.adk.agents.context_cache_config import ContextCacheConfig
 
 # Hard cap on the number of content entries (not turns) sent to the model.
 # Each user turn with tool calls generates ~4-6 content entries.
@@ -267,5 +268,10 @@ app = App(
     events_compaction_config=EventsCompactionConfig(
         token_threshold=4000,
         event_retention_size=2
+    ),
+    context_cache_config=ContextCacheConfig(
+        min_tokens=2048,
+        ttl_seconds=600,
+        cache_intervals=5
     )
 )
