@@ -7,6 +7,7 @@ from google.adk.models import LlmRequest, LlmResponse
 from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
+from google.adk.apps.app import App, EventsCompactionConfig
 
 # Hard cap on the number of content entries (not turns) sent to the model.
 # Each user turn with tool calls generates ~4-6 content entries.
@@ -258,4 +259,13 @@ root_agent = Agent(
         get_available_vas,
         apply_vas_to_booking,
     ],
+)
+
+app = App(
+    name="insurance_support_agent_app",
+    root_agent=root_agent,
+    events_compaction_config=EventsCompactionConfig(
+        token_threshold=4000,
+        event_retention_size=2
+    )
 )
