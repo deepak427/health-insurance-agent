@@ -87,7 +87,11 @@ def _before_model_guardrail(
                 )
                 break
 
-    lower = last_msg.lower()
+    import re
+    # Strip group context prefix if present (e.g. "[Group: Group A | deepak asks]: hello")
+    clean_text = re.sub(r"^\[Group:[^\]]+\]:\s*", "", last_msg, flags=re.IGNORECASE).strip()
+    lower = clean_text.lower()
+
     if any(pattern in lower for pattern in _BLOCKED):
         return LlmResponse(
             content=types.Content(
@@ -97,12 +101,12 @@ def _before_model_guardrail(
         )
 
     # ── Fast response for pure greetings (0 tokens, 0 tool calls) ────────────
-    import re
     cleaned_greeting = re.sub(r"[^\w\s]", "", lower).strip()
     pure_greetings = {
         "hi", "hello", "hey", "heya", "hola", "namaste",
         "good morning", "good afternoon", "good evening",
         "hi buddy", "hello buddy", "hey buddy", "hi dolphin buddy", "hello dolphin buddy",
+        "hello there", "hi there", "hey there",
     }
     if cleaned_greeting in pure_greetings:
         return LlmResponse(

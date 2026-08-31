@@ -240,16 +240,55 @@ async def download_artifact(
     filename: str,
     version: int = None,
 ):
-    artifact = await _artifact_svc.load_artifact(
-        app_name=app_name,
-        user_id=user_id,
-        session_id=session_id,
-        filename=filename,
-        version=version,
-    )
+    import urllib.parse
+    clean_filename = urllib.parse.unquote(filename)
+
+    artifact = None
+    try:
+        artifact = await _artifact_svc.load_artifact(
+            app_name=app_name,
+            user_id=user_id,
+            session_id=session_id,
+            filename=clean_filename,
+            version=version,
+        )
+    except Exception:
+        pass
+
+    # Fallback 1: try raw filename if different from clean_filename
+    if not artifact and clean_filename != filename:
+        try:
+            artifact = await _artifact_svc.load_artifact(
+                app_name=app_name,
+                user_id=user_id,
+                session_id=session_id,
+                filename=filename,
+                version=version,
+            )
+        except Exception:
+            pass
+
+    # Fallback 2: search across local disk artifacts directory if exists
+    if not artifact or not artifact.inline_data:
+        import glob
+        matches = glob.glob(os.path.join(AGENT_DIR, "artifacts", "**", clean_filename), recursive=True)
+        if not matches and clean_filename != filename:
+            matches = glob.glob(os.path.join(AGENT_DIR, "artifacts", "**", filename), recursive=True)
+        if matches:
+            file_path = matches[0]
+            if os.path.isfile(file_path):
+                with open(file_path, "rb") as f:
+                    raw = f.read()
+                ext = clean_filename.split(".")[-1].lower()
+                mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png" if ext == "png" else "application/pdf" if ext == "pdf" else "application/octet-stream"
+                return Response(
+                    content=raw,
+                    media_type=mime,
+                    headers={"Content-Disposition": f'inline; filename="{clean_filename}"'},
+                )
 
     if not artifact or not artifact.inline_data:
-        raise HTTPException(status_code=404, detail=f"'{filename}' not found")
+        raise HTTPException(status_code=404, detail=f"'{clean_filename}' not found")
 
     inline = artifact.inline_data
     raw = bytes(inline.data) if isinstance(inline.data, (bytes, bytearray)) else base64.b64decode(inline.data)
@@ -258,7 +297,7 @@ async def download_artifact(
     return Response(
         content=raw,
         media_type=mime,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={"Content-Disposition": f'inline; filename="{clean_filename}"'},
     )
 
 
