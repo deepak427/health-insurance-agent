@@ -131,15 +131,19 @@ def _before_model_guardrail(
 def _before_tool_guardrail(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> Optional[Dict]:
-    """Ensure mutating tool calls are only made for the session's own user."""
+    """Ensure mutating tool calls are only made for the session's own user or the group sender."""
     if tool.name not in _PROTECTED_TOOLS:
         return None  # not a protected tool — allow
 
     session_user_id = tool_context.state.get("user_id") or tool_context.state.get("userId")
+    sender_user_id = tool_context.state.get("sender_user_id") or tool_context.state.get("senderUserId")
     arg_user_id = args.get("user_id") or args.get("userId")
 
+    # In a group session (e.g. user_id is group_XXX), validate against the active sender
+    effective_user_id = sender_user_id if (session_user_id and str(session_user_id).startswith("group_")) else session_user_id
+
     # If the session carries a user_id, the tool arg must match it
-    if session_user_id and arg_user_id and session_user_id != arg_user_id:
+    if effective_user_id and arg_user_id and effective_user_id != arg_user_id:
         return {
             "status": "error",
             "message": "Unauthorized: user mismatch. Action blocked.",

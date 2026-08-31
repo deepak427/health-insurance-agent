@@ -29,6 +29,13 @@ from data.campaigns import (
     mark_campaign_messages_seen, evaluate_target_users, get_all_users
 )
 from data.token_usage import get_session_usage
+from data.groups import (
+    create_group, get_group, list_groups_for_user, delete_group,
+    add_member, remove_member, get_members, post_message,
+    get_messages, mark_read, get_unread_count, get_all_unread_for_user,
+    BUDDY_USER_ID, BUDDY_DISPLAY_NAME
+)
+from data.group_ai_session import get_group_session_identity, APP_NAME as GROUP_APP_NAME
 
 # Request-scoped identity — set by middleware, read by the token tracker callback
 _current_user_id: ContextVar[str] = ContextVar("current_user_id", default="unknown")
@@ -698,6 +705,119 @@ def mark_seen_endpoint(user_id: str, req: Optional[MarkSeenRequest] = None):
     msg_ids = req.message_ids if req else None
     mark_campaign_messages_seen(user_id, msg_ids)
     return {"status": "ok"}
+
+
+# ── Users & Group Chat API ───────────────────────────────────────────────────
+@app.get("/users", summary="List all known users for member picker")
+def list_users_endpoint():
+    return {"users": get_all_users()}
+
+
+class CreateGroupRequest(BaseModel):
+    name: str
+    created_by: str
+    members: List[str] = []
+    include_buddy: bool = True
+
+
+@app.post("/groups", summary="Create a new group")
+def create_group_endpoint(req: CreateGroupRequest):
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="Group name cannot be empty")
+    grp = create_group(
+        name=req.name.strip(),
+        created_by=req.created_by.strip(),
+        members=req.members,
+        include_buddy=req.include_buddy,
+    )
+    return grp
+
+
+@app.get("/groups", summary="List groups for a user")
+def list_groups_endpoint(user_id: str):
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id query parameter is required")
+    return {"groups": list_groups_for_user(user_id)}
+
+
+@app.get("/groups/{group_id}", summary="Get group details and members")
+def get_group_endpoint(group_id: str):
+    grp = get_group(group_id)
+    if not grp:
+        raise HTTPException(status_code=404, detail=f"Group {group_id} not found")
+    return grp
+
+
+@app.delete("/groups/{group_id}", summary="Delete a group (creator only or admin)")
+def delete_group_endpoint(group_id: str, user_id: Optional[str] = None):
+    success = delete_group(group_id, user_id=user_id)
+    if not success:
+        raise HTTPException(status_code=403, detail="Unauthorized or group not found")
+    return {"status": "deleted", "group_id": group_id}
+
+
+class AddMemberRequest(BaseModel):
+    user_id: str
+    added_by: str
+    is_bot: int = 0
+
+
+@app.post("/groups/{group_id}/members", summary="Add a member to group")
+def add_member_endpoint(group_id: str, req: AddMemberRequest):
+    success = add_member(group_id, req.user_id, req.added_by, is_bot=req.is_bot)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to add member or group already has Dolphin Buddy")
+    return {"status": "added", "members": get_members(group_id)}
+
+
+@app.delete("/groups/{group_id}/members/{user_id}", summary="Remove member or leave group")
+def remove_member_endpoint(group_id: str, user_id: str):
+    remove_member(group_id, user_id)
+    return {"status": "removed", "user_id": user_id}
+
+
+@app.get("/groups/{group_id}/messages", summary="Get paginated group message history")
+def get_group_messages_endpoint(group_id: str, limit: int = 50, before: Optional[str] = None):
+    return {"messages": get_messages(group_id, limit=limit, before=before)}
+
+
+class PostGroupMessageRequest(BaseModel):
+    sender_id: str
+    content: str
+    sender_name: Optional[str] = None
+    msg_type: str = "text"
+    artifacts: Optional[List[str]] = None
+    mentions: Optional[List[str]] = None
+
+
+@app.post("/groups/{group_id}/messages", summary="Post a message in group")
+def post_group_message_endpoint(group_id: str, req: PostGroupMessageRequest):
+    msg = post_message(
+        group_id=group_id,
+        sender_id=req.sender_id,
+        content=req.content,
+        sender_name=req.sender_name,
+        msg_type=req.msg_type,
+        artifacts=req.artifacts,
+        mentions=req.mentions,
+    )
+    return msg
+
+
+class MarkGroupReadRequest(BaseModel):
+    user_id: str
+
+
+@app.post("/groups/{group_id}/read", summary="Mark group messages read for a user")
+def mark_group_read_endpoint(group_id: str, req: MarkGroupReadRequest):
+    mark_read(group_id, req.user_id)
+    return {"status": "ok"}
+
+
+@app.get("/groups-unread/{user_id}", summary="Get unread message counts across all groups for user")
+def get_unread_summary_endpoint(user_id: str):
+    return {"unread": get_all_unread_for_user(user_id)}
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 if __name__ == "__main__":
