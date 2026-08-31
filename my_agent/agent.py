@@ -10,6 +10,12 @@ from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.load_artifacts_tool import LoadArtifactsTool
 from google.genai import types
 
+# Max number of past turns to include in every LLM request.
+# Each "turn" = 1 user message + 1 model reply (+ any tool calls in between).
+# Older turns are dropped from the request to cap input tokens.
+# Increase if the agent needs more history; decrease to save tokens.
+_MAX_HISTORY_TURNS = 6
+
 # Token usage tracking
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -59,11 +65,18 @@ _PROTECTED_TOOLS = {
 }
 
 
-# ── Guardrail 1: screen user input before it reaches the LLM ──────────────────
+# ── Guardrail 1: screen user input + strip images + limit history ─────────────
 def _before_model_guardrail(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> Optional[LlmResponse]:
-    """Block prompt injections only. Off-topic rule is enforced via the system prompt."""
+    """
+    1. Block prompt injections (unchanged).
+    2. Strip inline image/binary data from ALL history messages so the raw
+       passport photo (or any other uploaded file) is not re-sent to the model
+       on every subsequent turn — this is the #1 cause of the 600k+ token bills.
+    3. Truncate history to the last _MAX_HISTORY_TURNS user+model turn pairs
+       so that long sessions don't keep growing the context window indefinitely.
+    """
     last_msg = ""
     if llm_request.contents:
         for content in reversed(llm_request.contents):
@@ -74,7 +87,6 @@ def _before_model_guardrail(
                 break
 
     lower = last_msg.lower()
-
     if any(pattern in lower for pattern in _BLOCKED):
         return LlmResponse(
             content=types.Content(
@@ -82,6 +94,35 @@ def _before_model_guardrail(
                 parts=[types.Part(text="Sorry, I can't help with that.")],
             )
         )
+
+    # ── Strip inline binary data from history (images, PDFs, etc.) ──────────
+    # The model already extracted the text from the document via
+    # extract_traveler_details_from_document / analyze_insurance_document
+    # (those tools call a separate genai.Client and return text).
+    # Keeping the raw bytes in history only wastes tokens on every future turn.
+    #
+    # We skip the LAST content entry so that if LoadArtifactsTool just injected
+    # an artifact for the current turn, it is still available to the model.
+    if llm_request.contents:
+        contents_to_strip = llm_request.contents[:-1]  # all but the current message
+        for content in contents_to_strip:
+            if not content.parts:
+                continue
+            stripped = []
+            for part in content.parts:
+                if hasattr(part, "inline_data") and part.inline_data is not None:
+                    # Replace the binary blob with a tiny text placeholder
+                    mime = getattr(part.inline_data, "mime_type", "file") or "file"
+                    stripped.append(types.Part(text=f"[uploaded {mime} — already processed]"))
+                else:
+                    stripped.append(part)
+            content.parts = stripped
+
+    # ── Limit history to the last N turn-pairs to cap prompt size ────────────
+    # The system instruction is NOT in llm_request.contents, so we only
+    # need to trim the user/model conversation turns.
+    if llm_request.contents and len(llm_request.contents) > _MAX_HISTORY_TURNS * 2:
+        llm_request.contents = llm_request.contents[-(_MAX_HISTORY_TURNS * 2):]
 
     return None  # allow the request through
 
