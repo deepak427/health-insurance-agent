@@ -3,18 +3,16 @@ import os
 from typing import Any, Dict, Optional
 from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
-from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.models import LlmRequest, LlmResponse
 from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
-from google.adk.tools.load_artifacts_tool import LoadArtifactsTool
 from google.genai import types
 
-# Max number of past turns to include in every LLM request.
-# Each "turn" = 1 user message + 1 model reply (+ any tool calls in between).
-# Older turns are dropped from the request to cap input tokens.
-# Increase if the agent needs more history; decrease to save tokens.
-_MAX_HISTORY_TURNS = 6
+# Hard cap on the number of content entries (not turns) sent to the model.
+# Each user turn with tool calls generates ~4-6 content entries.
+# 20 entries ≈ 3-4 meaningful back-and-forth turns including tool calls.
+# Lower = cheaper. Raise if the agent forgets context too quickly.
+_MAX_HISTORY_ENTRIES = 20
 
 # Token usage tracking
 import sys
@@ -49,10 +47,11 @@ _RESPONSE_PROMPT_PATH = os.path.join(
 )
 
 # Patterns that indicate prompt injection / fishing for secrets
+# NOTE: "token" removed — it's a common word users legitimately use
 _BLOCKED = [
     ".env", "api_key", "apikey", "secret", "password", "passwd",
     "ignore previous", "ignore all", "disregard", "forget instructions",
-    "system prompt", "token", "credentials", "private key", "access key",
+    "system prompt", "credentials", "private key", "access key",
 ]
 
 
@@ -95,34 +94,33 @@ def _before_model_guardrail(
             )
         )
 
-    # ── Strip inline binary data from history (images, PDFs, etc.) ──────────
-    # The model already extracted the text from the document via
-    # extract_traveler_details_from_document / analyze_insurance_document
-    # (those tools call a separate genai.Client and return text).
-    # Keeping the raw bytes in history only wastes tokens on every future turn.
-    #
-    # We skip the LAST content entry so that if LoadArtifactsTool just injected
-    # an artifact for the current turn, it is still available to the model.
+    # ── Strip inline binary data from ALL contents (images, PDFs, etc.) ───────
+    # LoadArtifactsTool (now removed) used to inject PDF blobs into every turn.
+    # Belt-and-suspenders: strip any inline_data that sneaks in from any source.
+    # Documents are processed by extract_traveler_details_from_document /
+    # analyze_insurance_document via their own genai.Client calls — the model
+    # never needs the raw bytes in the conversation context.
     if llm_request.contents:
-        contents_to_strip = llm_request.contents[:-1]  # all but the current message
-        for content in contents_to_strip:
+        for content in llm_request.contents:
             if not content.parts:
                 continue
             stripped = []
             for part in content.parts:
                 if hasattr(part, "inline_data") and part.inline_data is not None:
-                    # Replace the binary blob with a tiny text placeholder
                     mime = getattr(part.inline_data, "mime_type", "file") or "file"
                     stripped.append(types.Part(text=f"[uploaded {mime} — already processed]"))
                 else:
                     stripped.append(part)
             content.parts = stripped
 
-    # ── Limit history to the last N turn-pairs to cap prompt size ────────────
-    # The system instruction is NOT in llm_request.contents, so we only
-    # need to trim the user/model conversation turns.
-    if llm_request.contents and len(llm_request.contents) > _MAX_HISTORY_TURNS * 2:
-        llm_request.contents = llm_request.contents[-(_MAX_HISTORY_TURNS * 2):]
+    # ── Limit history to the last N content entries to cap prompt size ──────
+    # ADK stores each tool call and tool response as a separate content entry.
+    # A single agent turn with 2 tool calls = 5 entries:
+    #   [user_msg, tool_call_1, tool_resp_1, tool_call_2, tool_resp_2, model_reply]
+    # So capping by "turns" vastly underestimates the real entry count.
+    # We cap by raw entry count instead — always keep the last entry (current msg).
+    if llm_request.contents and len(llm_request.contents) > _MAX_HISTORY_ENTRIES:
+        llm_request.contents = llm_request.contents[-_MAX_HISTORY_ENTRIES:]
 
     return None  # allow the request through
 
@@ -215,7 +213,8 @@ def _after_model_token_tracker(
     return None
 
 
-def _instruction_provider(context: ReadonlyContext) -> str:
+def _build_instruction() -> str:
+    """Build the full system instruction, merging in any custom response style."""
     custom = _load_response_prompt()
     if not custom:
         return INSURANCE_AGENT_PROMPT
@@ -233,7 +232,11 @@ root_agent = Agent(
     model='gemini-3.5-flash',
     name='insurance_support_agent',
     description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
-    instruction=_instruction_provider,
+    # Use static_instruction so ADK caches it server-side instead of re-sending
+    # the full prompt on every tool-call round-trip within a single user turn.
+    # A dynamic `instruction=callable` is re-evaluated on every LLM call —
+    # with 2 tool calls per turn that's 3x the prompt tokens wasted.
+    instruction=_build_instruction(),
     before_model_callback=_before_model_guardrail,
     after_model_callback=_after_model_token_tracker,
     before_tool_callback=_before_tool_guardrail,
@@ -254,6 +257,5 @@ root_agent = Agent(
         apply_addon_to_booking,
         get_available_vas,
         apply_vas_to_booking,
-        LoadArtifactsTool(),
     ],
 )
