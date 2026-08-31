@@ -82,6 +82,20 @@ def health():
 @app.get("/token-usage/{user_id}/{session_id}", summary="Get token usage and estimated cost for a session")
 def get_token_usage_endpoint(user_id: str, session_id: str):
     return get_session_usage(user_id, session_id)
+
+
+@app.get("/debug/token-log", summary="Debug: last 50 token usage rows")
+def debug_token_log():
+    """Shows raw token_usage table rows — for debugging only."""
+    import sqlite3
+    from data.token_usage import _DB_PATH
+    conn = sqlite3.connect(_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM token_usage ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return {"rows": [dict(r) for r in rows], "count": len(rows)}
 # ──────────────────────────────────────────────────────────────────────────────
 
 
