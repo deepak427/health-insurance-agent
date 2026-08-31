@@ -69,8 +69,8 @@ def _parse_amount(val) -> float:
 
 
 def get_all_users() -> List[str]:
-    """Get all unique user IDs from wallets, bookings, and group members."""
-    users = set()
+    """Get all unique user IDs from wallets, bookings, and group members (case-insensitively deduplicated)."""
+    user_map = {}  # lower_id -> original_id
     with _conn() as c:
         try:
             rows = c.execute("""
@@ -81,12 +81,13 @@ def get_all_users() -> List[str]:
                 SELECT DISTINCT user_id FROM group_members WHERE user_id IS NOT NULL AND user_id != '' AND is_bot = 0 AND user_id != 'dolphin_buddy'
             """).fetchall()
             for r in rows:
-                if r["user_id"]:
-                    users.add(r["user_id"])
+                uid = str(r["user_id"]).strip()
+                if uid:
+                    user_map[uid.lower()] = uid
         except Exception:
             pass
 
-    # Ensure a rich default pool of insurance agents is always present for collaboration
+    # Ensure defaults are added if not already present
     defaults = [
         "Agent_Prakhar",
         "Agent_Deepak",
@@ -98,9 +99,10 @@ def get_all_users() -> List[str]:
         "Agent_Karan",
     ]
     for d in defaults:
-        users.add(d)
+        if d.lower() not in user_map:
+            user_map[d.lower()] = d
 
-    return sorted(list(users))
+    return sorted(list(user_map.values()))
 
 
 def evaluate_target_users(filter_type: str, filter_value: float = 0.0) -> List[str]:
