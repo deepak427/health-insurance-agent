@@ -225,11 +225,19 @@ def delete_group(group_id: str, user_id: Optional[str] = None) -> bool:
     with _conn() as c:
         if user_id:
             row = c.execute("SELECT created_by FROM groups WHERE id = ?", (group_id,)).fetchone()
-            if not row or row["created_by"] != user_id:
+            if not row:
+                return False
+            created_by = (row["created_by"] or "").strip().lower()
+            req_user = user_id.strip().lower()
+            if created_by != req_user:
                 return False
         c.execute("DELETE FROM group_messages WHERE group_id = ?", (group_id,))
         c.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
         c.execute("DELETE FROM group_unread WHERE group_id = ?", (group_id,))
+        try:
+            c.execute("DELETE FROM handovers WHERE group_id = ?", (group_id,))
+        except Exception:
+            pass
         c.execute("DELETE FROM groups WHERE id = ?", (group_id,))
     return True
 
