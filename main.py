@@ -25,6 +25,7 @@ from data.campaigns import (
     execute_campaign, get_due_campaigns, get_user_campaign_messages,
     mark_campaign_messages_seen, evaluate_target_users, get_all_users
 )
+from data.token_usage import get_session_usage
 import asyncio
 
 load_dotenv()
@@ -75,6 +76,13 @@ _artifact_svc = create_artifact_service_from_options(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ── Token Usage API ────────────────────────────────────────────────────────────
+@app.get("/token-usage/{user_id}/{session_id}", summary="Get token usage and estimated cost for a session")
+def get_token_usage_endpoint(user_id: str, session_id: str):
+    return get_session_usage(user_id, session_id)
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 # ── Dynamic data endpoints ─────────────────────────────────────────────────────

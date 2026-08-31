@@ -10,6 +10,11 @@ from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.load_artifacts_tool import LoadArtifactsTool
 from google.genai import types
 
+# Token usage tracking — path relative to agent file
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from data.token_usage import record_usage
+
 from .prompt import INSURANCE_AGENT_PROMPT
 from .tools import (
     get_insurance_faq,
@@ -119,6 +124,36 @@ def _load_response_prompt() -> str:
         return ""
 
 
+# ── Token usage tracker ───────────────────────────────────────────────────────
+def _after_model_token_tracker(
+    callback_context: CallbackContext, llm_response: LlmResponse
+) -> Optional[LlmResponse]:
+    """Record token usage after every LLM call without modifying the response."""
+    try:
+        usage = llm_response.usage_metadata
+        if usage:
+            user_id = (
+                callback_context.state.get("user_id")
+                or callback_context.state.get("userId")
+                or "unknown"
+            )
+            # ADK stores session_id in state when the session is initialised
+            session_id = (
+                callback_context.state.get("session_id")
+                or callback_context.state.get("sessionId")
+                or "unknown"
+            )
+            record_usage(
+                user_id=str(user_id),
+                session_id=str(session_id),
+                prompt_tokens=usage.prompt_token_count or 0,
+                output_tokens=usage.candidates_token_count or 0,
+            )
+    except Exception as e:
+        print(f"[token_tracker] Warning: {e}")
+    return None  # never modify the response
+
+
 def _instruction_provider(context: ReadonlyContext) -> str:
     custom = _load_response_prompt()
     if not custom:
@@ -139,6 +174,7 @@ root_agent = Agent(
     description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
     instruction=_instruction_provider,
     before_model_callback=_before_model_guardrail,
+    after_model_callback=_after_model_token_tracker,
     before_tool_callback=_before_tool_guardrail,
     tools=[
         get_insurance_faq,
