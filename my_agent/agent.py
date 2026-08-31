@@ -96,6 +96,22 @@ def _before_model_guardrail(
             )
         )
 
+    # ── Fast response for pure greetings (0 tokens, 0 tool calls) ────────────
+    import re
+    cleaned_greeting = re.sub(r"[^\w\s]", "", lower).strip()
+    pure_greetings = {
+        "hi", "hello", "hey", "heya", "hola", "namaste",
+        "good morning", "good afternoon", "good evening",
+        "hi buddy", "hello buddy", "hey buddy", "hi dolphin buddy", "hello dolphin buddy",
+    }
+    if cleaned_greeting in pure_greetings:
+        return LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[types.Part(text="Hey! How can I help you with your travel insurance today?")],
+            )
+        )
+
     # ── Strip inline binary data from ALL contents (images, PDFs, etc.) ───────
     # LoadArtifactsTool (now removed) used to inject PDF blobs into every turn.
     # Belt-and-suspenders: strip any inline_data that sneaks in from any source.
@@ -270,8 +286,10 @@ app = App(
     name="insurance_support_agent_app",
     root_agent=root_agent,
     events_compaction_config=EventsCompactionConfig(
+        compaction_interval=5,
+        overlap_size=1,
         token_threshold=4000,
-        event_retention_size=2
+        event_retention_size=2,
     ),
     context_cache_config=ContextCacheConfig(
         min_tokens=2048,

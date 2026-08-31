@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from google.adk.tools import ToolContext
 from data.store import load
 from data.bookings import get_booking, update_booking
@@ -55,7 +55,7 @@ def get_available_addons(category: str = "") -> dict:
 
 async def apply_addon_to_booking(
     ref_number: str,
-    addon_keys: list,
+    addon_keys: List[str],
     tool_context: ToolContext,
 ) -> dict:
     """

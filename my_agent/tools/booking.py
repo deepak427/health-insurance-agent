@@ -5,6 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from typing import Optional, List, Dict, Any
 from google.adk.tools import ToolContext
 from data.bookings import create_booking, get_booking, update_booking, get_recent_bookings as _get_recent_bookings
 from data.wallet import get_wallet, deduct_wallet_credits, parse_amount
@@ -43,7 +44,7 @@ async def save_booking(
     premium: str,
     tool_context: ToolContext,
     notes: str = "",
-    addons: list = None,
+    addons: Optional[List[str]] = None,
     status: str = "complete",
     agent_commission: str = "",
 ) -> dict:
@@ -185,7 +186,7 @@ async def update_booking_details(
     travel_dates: str = "",
     destination: str = "",
     premium: str = "",
-    addons: list = None,
+    addons: Optional[List[str]] = None,
     agent_commission: str = "",
 ) -> dict:
     """

@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from typing import Optional, List, Dict, Any
 from fpdf import FPDF
 import google.genai.types as types
 from google.adk.tools import ToolContext
@@ -514,7 +515,7 @@ async def generate_booking_confirmation_pdf(
     tool_context: ToolContext,
     booking_ref: str = "",
     additional_details: str = "",
-    addons: list = None,
+    addons: Optional[List[str]] = None,
     agent_commission: str = "",
 ) -> dict:
     """
@@ -642,7 +643,7 @@ async def generate_booking_confirmation_pdf(
 
 
 async def generate_quotation_comparison_pdf(
-    policies: list[dict],
+    policies: List[Dict[str, Any]],
     destination: str,
     travel_dates: str,
     num_adults: int,
