@@ -37,10 +37,16 @@ def init_groups_db():
                 id          TEXT PRIMARY KEY,
                 name        TEXT NOT NULL,
                 created_by  TEXT NOT NULL,
+                is_muted    INTEGER NOT NULL DEFAULT 0,
+                handover_mode TEXT NOT NULL DEFAULT 'internal',
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL
             )
         """)
+        try:
+            c.execute("ALTER TABLE groups ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
         c.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -120,6 +126,8 @@ def get_group(group_id: str) -> Optional[Dict[str, Any]]:
         if not row:
             return None
         res = dict(row)
+        res["handover_mode"] = res.get("handover_mode") or "internal"
+        res["is_muted"] = int(res.get("is_muted") or 0)
 
         members = c.execute(
             "SELECT user_id, display_name, is_bot, added_at, added_by FROM group_members WHERE group_id = ? ORDER BY is_bot ASC, added_at ASC",
@@ -143,6 +151,22 @@ def get_group(group_id: str) -> Optional[Dict[str, Any]]:
     return res
 
 
+def set_group_mute(group_id: str, is_muted: bool) -> bool:
+    now = _now()
+    with _conn() as c:
+        res = c.execute(
+            "UPDATE groups SET is_muted = ?, updated_at = ? WHERE id = ?",
+            (1 if is_muted else 0, now, group_id)
+        )
+        return res.rowcount > 0
+
+
+def get_group_mute(group_id: str) -> bool:
+    with _conn() as c:
+        row = c.execute("SELECT is_muted FROM groups WHERE id = ?", (group_id,)).fetchone()
+        return bool(row and row["is_muted"])
+
+
 def list_groups_for_user(user_id: str) -> List[Dict[str, Any]]:
     with _conn() as c:
         rows = c.execute(
@@ -159,6 +183,8 @@ def list_groups_for_user(user_id: str) -> List[Dict[str, Any]]:
         groups = []
         for r in rows:
             g = dict(r)
+            g["handover_mode"] = g.get("handover_mode") or "internal"
+            g["is_muted"] = int(g.get("is_muted") or 0)
             members = c.execute(
                 "SELECT user_id, display_name, is_bot FROM group_members WHERE group_id = ?",
                 (g["id"],),

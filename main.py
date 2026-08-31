@@ -33,7 +33,13 @@ from data.groups import (
     create_group, get_group, list_groups_for_user, delete_group,
     add_member, remove_member, get_members, post_message,
     get_messages, mark_read, get_unread_count, get_all_unread_for_user,
+    set_group_mute, get_group_mute,
     BUDDY_USER_ID, BUDDY_DISPLAY_NAME
+)
+from data.handovers import (
+    create_handover, get_handover, list_handovers_for_group,
+    list_pending_handovers_for_user, approve_handover,
+    set_group_handover_mode, get_group_handover_mode
 )
 from data.group_ai_session import get_group_session_identity, APP_NAME as GROUP_APP_NAME
 
@@ -817,6 +823,90 @@ def mark_group_read_endpoint(group_id: str, req: MarkGroupReadRequest):
 @app.get("/groups-unread/{user_id}", summary="Get unread message counts across all groups for user")
 def get_unread_summary_endpoint(user_id: str):
     return {"unread": get_all_unread_for_user(user_id)}
+
+
+# ── Handover API (Internal & External) ─────────────────────────────────────────
+class HandoverModeRequest(BaseModel):
+    handover_mode: str  # "internal" | "external"
+
+
+class CreateHandoverRequest(BaseModel):
+    group_id: str
+    group_name: str
+    requester_id: str
+    requester_name: str
+    assigned_to: str
+    mode: str = "internal"  # "internal" | "external"
+    requirement: str
+
+
+class ApproveHandoverRequest(BaseModel):
+    approved_by: str
+    resolution_data: dict
+
+
+class GroupMuteRequest(BaseModel):
+    is_muted: bool
+
+
+@app.patch("/groups/{group_id}/mute", summary="Mute or unmute Dolphin Buddy in group")
+def set_group_mute_endpoint(group_id: str, req: GroupMuteRequest):
+    success = set_group_mute(group_id, req.is_muted)
+    if not success:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return {"status": "ok", "group_id": group_id, "is_muted": req.is_muted}
+
+
+@app.patch("/groups/{group_id}/handover-mode", summary="Set group handover mode")
+def set_handover_mode_endpoint(group_id: str, req: HandoverModeRequest):
+    success = set_group_handover_mode(group_id, req.handover_mode)
+    if not success:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return {"status": "ok", "group_id": group_id, "handover_mode": req.handover_mode}
+
+
+@app.post("/handovers", summary="Create human handover")
+def create_handover_endpoint(req: CreateHandoverRequest):
+    h = create_handover(
+        group_id=req.group_id,
+        group_name=req.group_name,
+        requester_id=req.requester_id,
+        requester_name=req.requester_name,
+        assigned_to=req.assigned_to,
+        mode=req.mode,
+        requirement=req.requirement,
+    )
+    return h
+
+
+@app.get("/handovers/{handover_id}", summary="Get single handover details")
+def get_handover_endpoint(handover_id: str):
+    h = get_handover(handover_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="Handover not found")
+    return h
+
+
+@app.get("/groups/{group_id}/handovers", summary="List handovers for a group")
+def list_group_handovers_endpoint(group_id: str):
+    return {"handovers": list_handovers_for_group(group_id)}
+
+
+@app.get("/handovers/pending/{user_id}", summary="List pending external handovers for user")
+def list_pending_handovers_endpoint(user_id: str):
+    return {"handovers": list_pending_handovers_for_user(user_id)}
+
+
+@app.post("/handovers/{handover_id}/approve", summary="Approve handover and publish custom policy to group")
+def approve_handover_endpoint(handover_id: str, req: ApproveHandoverRequest):
+    res = approve_handover(
+        handover_id=handover_id,
+        approved_by=req.approved_by,
+        resolution_data=req.resolution_data,
+    )
+    if not res:
+        raise HTTPException(status_code=404, detail="Handover not found")
+    return res
 # ─────────────────────────────────────────────────────────────────────────────
 
 
