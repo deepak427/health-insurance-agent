@@ -61,17 +61,10 @@ def get_session_usage(user_id: str, session_id: str) -> dict:
                 COALESCE(SUM(total_tokens), 0)   AS total_tokens,
                 COUNT(*)                          AS call_count
             FROM token_usage
-            WHERE user_id = ? AND (session_id = ? OR session_id = 'unknown')
+            WHERE user_id = ? AND session_id = ?
             """,
             (user_id, session_id),
         ).fetchone()
-
-        # Debug: also check what sessions exist for this user
-        all_rows = c.execute(
-            "SELECT session_id, COUNT(*) as cnt, SUM(total_tokens) as tok FROM token_usage WHERE user_id = ? GROUP BY session_id",
-            (user_id,),
-        ).fetchall()
-        print(f"[token_usage] query user={user_id} session={session_id} found_rows={dict(row)} all_sessions={[dict(r) for r in all_rows]}")
 
     prompt = row["prompt_tokens"]
     output = row["output_tokens"]

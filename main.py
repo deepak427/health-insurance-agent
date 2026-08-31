@@ -27,6 +27,39 @@ from data.campaigns import (
 )
 from data.token_usage import get_session_usage
 import asyncio
+import json as _json
+from contextvars import ContextVar
+
+# Request-scoped identity — set by middleware, read by token tracker callback
+_current_user_id: ContextVar[str] = ContextVar("current_user_id", default="unknown")
+_current_session_id: ContextVar[str] = ContextVar("current_session_id", default="unknown")
+
+
+# ── Middleware: capture user_id + session_id from /run_sse body ───────────────
+@app.middleware("http")
+async def _capture_identity(request: Request, call_next):
+    """
+    For /run_sse calls, extract user_id + session_id from the JSON body
+    and store in ContextVar so the after_model_callback can read them.
+    """
+    if request.url.path.endswith("/run_sse"):
+        try:
+            raw = await request.body()
+            body = _json.loads(raw) if raw else {}
+            uid = body.get("user_id") or body.get("userId", "unknown")
+            sid = body.get("session_id") or body.get("sessionId", "unknown")
+            _current_user_id.set(uid)
+            _current_session_id.set(sid)
+
+            # Rebuild request so downstream (ADK) can still read the body
+            async def receive():
+                return {"type": "http.request", "body": raw, "more_body": False}
+            request = Request(request.scope, receive)
+        except Exception as e:
+            print(f"[identity_middleware] warning: {e}")
+
+    return await call_next(request)
+# ─────────────────────────────────────────────────────────────────────────────
 
 load_dotenv()
 # Also load agent-level env so we have access to agent settings

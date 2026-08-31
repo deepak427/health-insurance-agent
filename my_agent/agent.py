@@ -10,7 +10,7 @@ from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.load_artifacts_tool import LoadArtifactsTool
 from google.genai import types
 
-# Token usage tracking — path relative to agent file
+# Token usage tracking
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from data.token_usage import record_usage
@@ -131,44 +131,47 @@ def _after_model_token_tracker(
     """Record token usage after every LLM call without modifying the response."""
     try:
         usage = getattr(llm_response, "usage_metadata", None)
-        print(f"[token_tracker] fired — usage_metadata={usage}")
-
         if not usage:
-            # Some ADK versions wrap it differently — try the raw response
-            raw = getattr(llm_response, "raw", None) or getattr(llm_response, "_raw_response", None)
-            if raw:
-                usage = getattr(raw, "usage_metadata", None)
-            print(f"[token_tracker] fallback raw usage={usage}")
+            return None
 
         prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
         output_tokens = getattr(usage, "candidates_token_count", 0) or 0
 
-        print(f"[token_tracker] prompt={prompt_tokens} output={output_tokens}")
-
+        # Try session state first, fall back to ContextVars set by middleware
         user_id = (
             callback_context.state.get("user_id")
             or callback_context.state.get("userId")
-            or "unknown"
         )
         session_id = (
             callback_context.state.get("session_id")
             or callback_context.state.get("sessionId")
-            or "unknown"
         )
-        print(f"[token_tracker] user_id={user_id} session_id={session_id}")
+
+        # Fall back to ContextVars injected by the HTTP middleware
+        if not user_id or not session_id:
+            try:
+                from main import _current_user_id, _current_session_id
+                user_id = user_id or _current_user_id.get("unknown")
+                session_id = session_id or _current_session_id.get("unknown")
+            except ImportError:
+                pass
+
+        user_id = str(user_id or "unknown")
+        session_id = str(session_id or "unknown")
+
+        print(f"[token_tracker] prompt={prompt_tokens} output={output_tokens} user={user_id} session={session_id}")
 
         record_usage(
-            user_id=str(user_id),
-            session_id=str(session_id),
+            user_id=user_id,
+            session_id=session_id,
             prompt_tokens=prompt_tokens,
             output_tokens=output_tokens,
         )
-        print(f"[token_tracker] recorded OK")
     except Exception as e:
         import traceback
         print(f"[token_tracker] ERROR: {e}")
         traceback.print_exc()
-    return None  # never modify the response
+    return None
 
 
 def _instruction_provider(context: ReadonlyContext) -> str:
