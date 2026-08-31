@@ -69,17 +69,38 @@ def _parse_amount(val) -> float:
 
 
 def get_all_users() -> List[str]:
-    """Get all unique user IDs from wallets and bookings."""
+    """Get all unique user IDs from wallets, bookings, and group members."""
+    users = set()
     with _conn() as c:
-        rows = c.execute("""
-            SELECT DISTINCT user_id FROM wallets WHERE user_id IS NOT NULL AND user_id != ''
-            UNION
-            SELECT DISTINCT user_id FROM bookings WHERE user_id IS NOT NULL AND user_id != ''
-        """).fetchall()
-        users = [r["user_id"] for r in rows if r["user_id"]]
-        if not users:
-            users = ["default_user", "Agent_Prakhar", "Agent_Deepak"]
-        return users
+        try:
+            rows = c.execute("""
+                SELECT DISTINCT user_id FROM wallets WHERE user_id IS NOT NULL AND user_id != '' AND user_id != 'dolphin_buddy'
+                UNION
+                SELECT DISTINCT user_id FROM bookings WHERE user_id IS NOT NULL AND user_id != ''
+                UNION
+                SELECT DISTINCT user_id FROM group_members WHERE user_id IS NOT NULL AND user_id != '' AND is_bot = 0 AND user_id != 'dolphin_buddy'
+            """).fetchall()
+            for r in rows:
+                if r["user_id"]:
+                    users.add(r["user_id"])
+        except Exception:
+            pass
+
+    # Ensure a rich default pool of insurance agents is always present for collaboration
+    defaults = [
+        "Agent_Prakhar",
+        "Agent_Deepak",
+        "Agent_Ananya",
+        "Agent_Rahul",
+        "Agent_Neha",
+        "Agent_Vikram",
+        "Agent_Pooja",
+        "Agent_Karan",
+    ]
+    for d in defaults:
+        users.add(d)
+
+    return sorted(list(users))
 
 
 def evaluate_target_users(filter_type: str, filter_value: float = 0.0) -> List[str]:
