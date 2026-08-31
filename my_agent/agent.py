@@ -130,27 +130,44 @@ def _after_model_token_tracker(
 ) -> Optional[LlmResponse]:
     """Record token usage after every LLM call without modifying the response."""
     try:
-        usage = llm_response.usage_metadata
-        if usage:
-            user_id = (
-                callback_context.state.get("user_id")
-                or callback_context.state.get("userId")
-                or "unknown"
-            )
-            # ADK stores session_id in state when the session is initialised
-            session_id = (
-                callback_context.state.get("session_id")
-                or callback_context.state.get("sessionId")
-                or "unknown"
-            )
-            record_usage(
-                user_id=str(user_id),
-                session_id=str(session_id),
-                prompt_tokens=usage.prompt_token_count or 0,
-                output_tokens=usage.candidates_token_count or 0,
-            )
+        usage = getattr(llm_response, "usage_metadata", None)
+        print(f"[token_tracker] fired — usage_metadata={usage}")
+
+        if not usage:
+            # Some ADK versions wrap it differently — try the raw response
+            raw = getattr(llm_response, "raw", None) or getattr(llm_response, "_raw_response", None)
+            if raw:
+                usage = getattr(raw, "usage_metadata", None)
+            print(f"[token_tracker] fallback raw usage={usage}")
+
+        prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+
+        print(f"[token_tracker] prompt={prompt_tokens} output={output_tokens}")
+
+        user_id = (
+            callback_context.state.get("user_id")
+            or callback_context.state.get("userId")
+            or "unknown"
+        )
+        session_id = (
+            callback_context.state.get("session_id")
+            or callback_context.state.get("sessionId")
+            or "unknown"
+        )
+        print(f"[token_tracker] user_id={user_id} session_id={session_id}")
+
+        record_usage(
+            user_id=str(user_id),
+            session_id=str(session_id),
+            prompt_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+        )
+        print(f"[token_tracker] recorded OK")
     except Exception as e:
-        print(f"[token_tracker] Warning: {e}")
+        import traceback
+        print(f"[token_tracker] ERROR: {e}")
+        traceback.print_exc()
     return None  # never modify the response
 
 
