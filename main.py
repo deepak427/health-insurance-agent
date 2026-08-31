@@ -8,6 +8,9 @@ AWS EC2    : set ARTIFACT_SERVICE_URI=s3://bucket + AWS_REGION for S3
 import base64
 import os
 import uvicorn
+import asyncio
+import json as _json
+from contextvars import ContextVar
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
@@ -26,40 +29,10 @@ from data.campaigns import (
     mark_campaign_messages_seen, evaluate_target_users, get_all_users
 )
 from data.token_usage import get_session_usage
-import asyncio
-import json as _json
-from contextvars import ContextVar
 
-# Request-scoped identity — set by middleware, read by token tracker callback
+# Request-scoped identity — set by middleware, read by the token tracker callback
 _current_user_id: ContextVar[str] = ContextVar("current_user_id", default="unknown")
 _current_session_id: ContextVar[str] = ContextVar("current_session_id", default="unknown")
-
-
-# ── Middleware: capture user_id + session_id from /run_sse body ───────────────
-@app.middleware("http")
-async def _capture_identity(request: Request, call_next):
-    """
-    For /run_sse calls, extract user_id + session_id from the JSON body
-    and store in ContextVar so the after_model_callback can read them.
-    """
-    if request.url.path.endswith("/run_sse"):
-        try:
-            raw = await request.body()
-            body = _json.loads(raw) if raw else {}
-            uid = body.get("user_id") or body.get("userId", "unknown")
-            sid = body.get("session_id") or body.get("sessionId", "unknown")
-            _current_user_id.set(uid)
-            _current_session_id.set(sid)
-
-            # Rebuild request so downstream (ADK) can still read the body
-            async def receive():
-                return {"type": "http.request", "body": raw, "more_body": False}
-            request = Request(request.scope, receive)
-        except Exception as e:
-            print(f"[identity_middleware] warning: {e}")
-
-    return await call_next(request)
-# ─────────────────────────────────────────────────────────────────────────────
 
 load_dotenv()
 # Also load agent-level env so we have access to agent settings
@@ -104,6 +77,33 @@ _artifact_svc = create_artifact_service_from_options(
     artifact_service_uri=ARTIFACT_SERVICE_URI,
     use_local_storage=True,
 )
+
+
+# ── Middleware: capture user_id + session_id from /run_sse body ───────────────
+@app.middleware("http")
+async def _capture_identity(request: Request, call_next):
+    """
+    For /run_sse calls, extract user_id + session_id from the JSON body
+    and store in ContextVar so the after_model_callback can read them.
+    """
+    if request.url.path.endswith("/run_sse"):
+        try:
+            raw = await request.body()
+            body = _json.loads(raw) if raw else {}
+            uid = body.get("user_id") or body.get("userId", "unknown")
+            sid = body.get("session_id") or body.get("sessionId", "unknown")
+            _current_user_id.set(uid)
+            _current_session_id.set(sid)
+
+            # Rebuild request so downstream (ADK) can still read the body
+            async def receive():
+                return {"type": "http.request", "body": raw, "more_body": False}
+            request = Request(request.scope, receive)
+        except Exception as e:
+            print(f"[identity_middleware] warning: {e}")
+
+    return await call_next(request)
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @app.get("/health")
