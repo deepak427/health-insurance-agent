@@ -42,13 +42,13 @@ To book a policy, ALL trip details AND traveler KYC details/documents for EVERY 
    - Call **save_booking** with status "complete", traveler details in `notes`, and insurer premium.
    - **If save_booking returns status "insufficient_credits":**
      * Booking was NOT created.
-     * Send message: "Cannot complete booking: You need ₹{{required_credits}} credits, but your current balance is ₹{{available_credits}}. Please top up your wallet credits from the top bar to proceed."
+     * Send message: "Cannot complete booking: You need ₹{required_credits?} credits, but your current balance is ₹{available_credits?}. Please top up your wallet credits from the top bar to proceed."
    - **If save_booking succeeds:**
      * Booking created with reference **BUD-XXXXX** and premium deducted from wallet.
      * Immediately call **generate_booking_confirmation_pdf** with `booking_ref` and `additional_details`.
      * Send ONE message:
-       - Confirm booking is **100% complete** with reference **{{ref_number}}**.
-       - State insurer premium ₹{{deducted_credits}} deducted from wallet (remaining balance: ₹{{remaining_credits}}).
+       - Confirm booking is **100% complete** with reference **{ref_number?}**.
+       - State insurer premium ₹{deducted_credits?} deducted from wallet (remaining balance: ₹{remaining_credits?}).
        - Attach official confirmation PDF.
 
 ### 2b. Commission & Pricing Rule
