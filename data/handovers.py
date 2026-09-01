@@ -205,21 +205,20 @@ def approve_handover(
         "insurer": insurer,
         "price": premium,
         "badge": "Custom Structured",
-        "description": f"Custom policy structured by @{approved_by} for @{requester_name}. {notes}",
+        "description": f"Tailored policy structured for @{requester_name}. {notes}",
         "features": [
             f"Coverage: {sum_insured}",
             f"Destination: {destination}",
             f"Validity: {travel_dates}",
             f"Included Riders: {riders}",
         ],
-        "prompt": f"I would like to proceed with booking the approved custom plan '{plan_name}' from {insurer} for {premium}.",
+        "prompt": f"I would like to proceed with booking the custom plan '{plan_name}' from {insurer} for {premium}.",
     }
 
     cards_marker = f"<!--POLICY_CARDS:[{json.dumps(policy_card)}]-->"
 
     group_announcement = (
-        f"🎉 **Custom Policy Approved by @{approved_by}!**\n\n"
-        f"Here is the customized policy structured for **@{requester_name}**:\n\n"
+        f"✨ Here is the customized policy option structured for you, **@{requester_name}**:\n\n"
         f"{cards_marker}\n\n"
         f"@{requester_name} You can click **Choose Plan** above to confirm this custom structured booking with your wallet credits."
     )
