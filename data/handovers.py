@@ -197,22 +197,35 @@ def approve_handover(
     travel_dates = resolution_data.get("travel_dates", "Flexible")
     riders = resolution_data.get("riders", "Standard + Adventure + Medical Waiver")
     notes = resolution_data.get("notes", "Approved by senior agent underwriter.")
-    requester_name = h.get("requester_name", "Valued Traveler")
-    requester_id = h.get("requester_id", "")
+    clean_premium = str(premium).replace("₹", "").replace(",", "").strip()
 
     policy_card = {
+        "type": "policy",
+        "name": plan_name,
         "title": plan_name,
+        "company": insurer,
         "insurer": insurer,
+        "premium": clean_premium if clean_premium else "3,500",
         "price": premium,
+        "sumInsured": sum_insured,
+        "sum_insured": sum_insured,
         "badge": "Custom Structured",
-        "description": f"Tailored policy structured for @{requester_name}. {notes}",
+        "highlights": [
+            f"Coverage: {sum_insured}",
+            f"Destination: {destination}",
+            f"Validity: {travel_dates}",
+            f"Included Riders: {riders}",
+            f"Notes: {notes}",
+        ],
         "features": [
             f"Coverage: {sum_insured}",
             f"Destination: {destination}",
             f"Validity: {travel_dates}",
             f"Included Riders: {riders}",
+            f"Notes: {notes}",
         ],
-        "prompt": f"I would like to proceed with booking the custom plan '{plan_name}' from {insurer} for {premium}.",
+        "action": "Choose this plan",
+        "prompt": f"I want to book the {plan_name} plan from {insurer} for ₹{clean_premium}",
     }
 
     cards_marker = f"<!--POLICY_CARDS:[{json.dumps(policy_card)}]-->"
