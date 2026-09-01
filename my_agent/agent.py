@@ -195,6 +195,9 @@ def _after_model_token_tracker(
 ) -> Optional[LlmResponse]:
     """Record token usage after every LLM call without modifying the response."""
     try:
+        if getattr(llm_response, "partial", False):
+            return None
+
         usage = getattr(llm_response, "usage_metadata", None)
         if not usage:
             return None
