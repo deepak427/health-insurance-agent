@@ -5,3 +5,4 @@ aiosqlite
 fpdf2
 python-dotenv
 boto3
+httpx
