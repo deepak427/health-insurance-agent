@@ -40,7 +40,7 @@ from whatsapp.formatter import format_for_whatsapp, extract_artifact_filenames
 
 logger = logging.getLogger("whatsapp.webhook")
 
-router = APIRouter(prefix="/webhook", tags=["whatsapp"])
+router = APIRouter(prefix="/api", tags=["whatsapp"])
 
 # ── Meta Graph API constants ───────────────────────────────────────────────────
 _GRAPH_URL = "https://graph.facebook.com/v19.0"
@@ -54,17 +54,14 @@ _ADK_APP_NAME = "my_agent"
 _ADK_BASE = "http://localhost:8000"
 
 
-# ── Verification handshake (GET) ───────────────────────────────────────────────
-@router.get("/whatsapp", include_in_schema=False)
+# ── Verification handshake (GET) — kept for direct Meta fallback ──────────────
+@router.get("/whatsapp/webhook", include_in_schema=False)
 async def verify_webhook(
     hub_mode: str = Query(None, alias="hub.mode"),
     hub_verify_token: str = Query(None, alias="hub.verify_token"),
     hub_challenge: str = Query(None, alias="hub.challenge"),
 ):
-    """
-    Meta calls this once when you register the webhook URL in the App Dashboard.
-    We must echo back hub.challenge if the verify token matches.
-    """
+    """Not used when forwarding via Whatsbyte CRM — kept for direct Meta fallback."""
     if hub_mode == "subscribe" and hub_verify_token == _VERIFY_TOKEN:
         logger.info("[whatsapp] Webhook verified by Meta.")
         return PlainTextResponse(hub_challenge or "")
@@ -73,20 +70,17 @@ async def verify_webhook(
 
 
 # ── Inbound message handler (POST) ────────────────────────────────────────────
-@router.post("/whatsapp", status_code=200)
+@router.post("/whatsapp/webhook", status_code=200)
 async def receive_whatsapp(request: Request):
     """
-    Meta delivers every inbound WhatsApp message here.
-    Always returns 200 immediately — processing happens asynchronously so
-    Meta doesn't retry due to a slow agent response.
+    Receives forwarded Meta webhook payloads from Whatsbyte CRM.
+    Always returns 200 immediately — processing is fire-and-forget.
     """
     try:
         body = await request.json()
     except Exception:
-        # Meta sometimes sends non-JSON probes; always 200
         return {"status": "ok"}
 
-    # Fire-and-forget — we must return 200 fast
     asyncio.create_task(_handle_payload(body))
     return {"status": "ok"}
 
