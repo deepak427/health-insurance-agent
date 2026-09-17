@@ -1,0 +1,410 @@
+"""
+WhatsApp webhook — Meta Cloud API integration.
+
+Handles:
+  GET  /webhook/whatsapp  — Meta verification handshake (one-time setup)
+  POST /webhook/whatsapp  — Inbound message handler
+
+Flow for every inbound message:
+  1. Parse phone + text from Meta payload
+  2. Idempotency check (duplicate delivery guard)
+  3. get_or_create_contact() → stable user_id + session_id
+  4. Persist inbound message to whatsapp_messages
+  5. If ai_muted → stop here (UI shows it, agent can reply manually)
+  6. Ensure ADK session exists
+  7. Call ADK agent via internal HTTP → collect full response
+  8. format_for_whatsapp(response) → send text via Meta Graph API
+  9. For each PDF artifact in response → send as WhatsApp document
+ 10. Persist outbound message (full text with card markers) for UI display
+
+Environment variables required (add to hip/.env):
+  WHATSAPP_PHONE_NUMBER_ID   — from Meta App Dashboard
+  WHATSAPP_TOKEN             — permanent system user token
+  WHATSAPP_VERIFY_TOKEN      — any secret string you set in Meta webhook config
+"""
+import os
+import json
+import asyncio
+import httpx
+import logging
+from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+
+from data.whatsapp_contacts import (
+    get_or_create_contact,
+    save_message,
+    set_ai_muted,
+    message_already_processed,
+)
+from whatsapp.formatter import format_for_whatsapp, extract_artifact_filenames
+
+logger = logging.getLogger("whatsapp.webhook")
+
+router = APIRouter(prefix="/webhook", tags=["whatsapp"])
+
+# ── Meta Graph API constants ───────────────────────────────────────────────────
+_GRAPH_URL = "https://graph.facebook.com/v19.0"
+_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+_WA_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
+_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "dolphin_verify")
+
+# ADK app name — must match the folder name under hip/
+_ADK_APP_NAME = "my_agent"
+# Internal base URL for ADK REST calls (localhost, same process)
+_ADK_BASE = "http://localhost:8000"
+
+
+# ── Verification handshake (GET) ───────────────────────────────────────────────
+@router.get("/whatsapp", include_in_schema=False)
+async def verify_webhook(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+):
+    """
+    Meta calls this once when you register the webhook URL in the App Dashboard.
+    We must echo back hub.challenge if the verify token matches.
+    """
+    if hub_mode == "subscribe" and hub_verify_token == _VERIFY_TOKEN:
+        logger.info("[whatsapp] Webhook verified by Meta.")
+        return PlainTextResponse(hub_challenge or "")
+    logger.warning("[whatsapp] Webhook verification failed — token mismatch.")
+    raise HTTPException(status_code=403, detail="Verification token mismatch")
+
+
+# ── Inbound message handler (POST) ────────────────────────────────────────────
+@router.post("/whatsapp", status_code=200)
+async def receive_whatsapp(request: Request):
+    """
+    Meta delivers every inbound WhatsApp message here.
+    Always returns 200 immediately — processing happens asynchronously so
+    Meta doesn't retry due to a slow agent response.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        # Meta sometimes sends non-JSON probes; always 200
+        return {"status": "ok"}
+
+    # Fire-and-forget — we must return 200 fast
+    asyncio.create_task(_handle_payload(body))
+    return {"status": "ok"}
+
+
+async def _handle_payload(body: dict):
+    """Process a single Meta webhook payload (may contain multiple messages)."""
+    try:
+        entry = body.get("entry", [])
+        for e in entry:
+            for change in e.get("changes", []):
+                value = change.get("value", {})
+                messages = value.get("messages", [])
+                contacts = value.get("contacts", [])
+
+                # Build a phone → display_name map from the contacts block
+                contact_names = {}
+                for c in contacts:
+                    wa_id = c.get("wa_id", "")
+                    name = c.get("profile", {}).get("name", "")
+                    if wa_id:
+                        contact_names[wa_id] = name
+
+                for msg in messages:
+                    await _process_message(msg, contact_names)
+    except Exception as e:
+        logger.error(f"[whatsapp] Error processing payload: {e}", exc_info=True)
+
+
+async def _process_message(msg: dict, contact_names: dict):
+    """Handle a single inbound WhatsApp message object."""
+    wa_message_id = msg.get("id", "")
+    msg_type = msg.get("type", "")
+    phone = msg.get("from", "")
+
+    if not phone:
+        return
+
+    # ── Idempotency guard ──────────────────────────────────────────────────────
+    if wa_message_id and message_already_processed(wa_message_id):
+        logger.debug(f"[whatsapp] Skipping duplicate message {wa_message_id}")
+        return
+
+    # Extract text (text messages) or caption (image/doc messages)
+    text = ""
+    if msg_type == "text":
+        text = msg.get("text", {}).get("body", "").strip()
+    elif msg_type in ("image", "document", "audio", "video"):
+        text = msg.get(msg_type, {}).get("caption", "").strip()
+        if not text:
+            text = f"[{msg_type} received — document/media not supported via WhatsApp yet]"
+    elif msg_type == "interactive":
+        # Button reply or list reply
+        interactive = msg.get("interactive", {})
+        if interactive.get("type") == "button_reply":
+            text = interactive["button_reply"].get("title", "").strip()
+        elif interactive.get("type") == "list_reply":
+            text = interactive["list_reply"].get("title", "").strip()
+    else:
+        # Sticker, location, etc. — acknowledge but don't process
+        logger.info(f"[whatsapp] Unsupported message type '{msg_type}' from {phone}")
+        return
+
+    if not text:
+        return
+
+    display_name = contact_names.get(phone, "")
+
+    # ── Lookup / create contact record ────────────────────────────────────────
+    contact = get_or_create_contact(phone, display_name or None)
+    user_id = contact["user_id"]
+    session_id = contact["session_id"]
+    name_label = contact.get("display_name") or phone
+
+    logger.info(f"[whatsapp] Inbound from {phone} ({name_label}): {text[:80]}")
+
+    # ── Persist inbound message ────────────────────────────────────────────────
+    save_message(
+        phone=phone,
+        direction="inbound",
+        text=text,
+        sender_label=name_label,
+        wa_message_id=wa_message_id,
+    )
+
+    # ── Mute check — if agent is silenced, stop here ───────────────────────────
+    if contact.get("ai_muted"):
+        logger.info(f"[whatsapp] AI muted for {phone} — message stored, awaiting manual reply.")
+        return
+
+    # ── Ensure ADK session exists ──────────────────────────────────────────────
+    await _ensure_adk_session(user_id, session_id)
+
+    # ── Call ADK agent and collect full response ───────────────────────────────
+    agent_response_text = await _call_agent(user_id, session_id, text)
+
+    if not agent_response_text:
+        logger.warning(f"[whatsapp] Agent returned empty response for {phone}")
+        return
+
+    # ── Persist full response (with card markers) for UI display ──────────────
+    save_message(
+        phone=phone,
+        direction="outbound",
+        text=agent_response_text,
+        sender_label="Buddy",
+    )
+
+    # ── Format and send to WhatsApp ────────────────────────────────────────────
+    wa_text = format_for_whatsapp(agent_response_text)
+    if wa_text:
+        await _send_text_message(phone, wa_text)
+
+    # ── Send any PDF artifacts as WhatsApp document messages ──────────────────
+    pdf_names = extract_artifact_filenames(agent_response_text)
+    for filename in pdf_names:
+        await _send_pdf_artifact(phone, user_id, session_id, filename)
+
+
+# ── ADK session helpers ────────────────────────────────────────────────────────
+
+async def _ensure_adk_session(user_id: str, session_id: str):
+    """Create ADK session if it doesn't exist yet. 409 = already exists, that's fine."""
+    url = f"{_ADK_BASE}/apps/{_ADK_APP_NAME}/users/{user_id}/sessions/{session_id}"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(
+                url,
+                json={"state": {"user_id": user_id, "session_id": session_id}},
+            )
+    except Exception as e:
+        logger.warning(f"[whatsapp] Session ensure warning: {e}")
+
+
+async def _call_agent(user_id: str, session_id: str, text: str) -> str:
+    """
+    Send a message to the ADK agent via /run_sse (streaming) and collect
+    the complete response text.
+
+    We read the SSE stream locally (same server) and accumulate all text chunks.
+    This mirrors exactly what the frontend does, ensuring the same agent
+    behaviour, guardrails, token tracking, and tool calls all fire normally.
+    """
+    url = f"{_ADK_BASE}/run_sse"
+    payload = {
+        "appName": _ADK_APP_NAME,
+        "userId": user_id,
+        "sessionId": session_id,
+        "newMessage": {
+            "role": "user",
+            "parts": [{"text": text}],
+        },
+        "streaming": True,
+    }
+
+    accumulated_text = ""
+    accumulated_artifacts: list[str] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            async with client.stream("POST", url, json=payload) as response:
+                if response.status_code != 200:
+                    logger.error(f"[whatsapp] ADK /run_sse returned {response.status_code}")
+                    return ""
+
+                buffer = ""
+                async for chunk in response.aiter_text():
+                    buffer += chunk
+                    lines = buffer.split("\n")
+                    buffer = lines.pop()  # keep incomplete last line
+
+                    for line in lines:
+                        if not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if not raw or raw == "[DONE]":
+                            continue
+                        try:
+                            event = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # Collect text from model content
+                        content = event.get("content")
+                        if content and content.get("role") == "model":
+                            for part in content.get("parts", []):
+                                if "text" in part and part["text"]:
+                                    accumulated_text += part["text"]
+
+                        # Collect artifact filenames
+                        artifact_delta = event.get("actions", {}).get("artifactDelta", {})
+                        for fname in artifact_delta.keys():
+                            if fname not in accumulated_artifacts:
+                                accumulated_artifacts.append(fname)
+
+    except Exception as e:
+        logger.error(f"[whatsapp] Error calling ADK agent: {e}", exc_info=True)
+        return ""
+
+    # Append artifact filenames as pseudo-text so formatter can detect them
+    # (extract_artifact_filenames scans for *.pdf in the full response string)
+    for fname in accumulated_artifacts:
+        if fname.lower().endswith(".pdf") and fname not in accumulated_text:
+            accumulated_text += f"\n{fname}"
+
+    return accumulated_text.strip()
+
+
+# ── Meta Graph API senders ─────────────────────────────────────────────────────
+
+async def _send_text_message(to: str, text: str):
+    """Send a plain text message to a WhatsApp number via Meta Graph API."""
+    if not _PHONE_NUMBER_ID or not _WA_TOKEN:
+        logger.warning("[whatsapp] WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_TOKEN not set — skipping send.")
+        return
+
+    # WhatsApp has a 4096-char limit per message; split if needed
+    chunks = _split_message(text, limit=4000)
+    for chunk in chunks:
+        await _post_to_graph(to, {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "text",
+            "text": {"preview_url": False, "body": chunk},
+        })
+
+
+async def _send_pdf_artifact(
+    to: str, user_id: str, session_id: str, filename: str
+):
+    """
+    Download a PDF artifact from local storage and send it to WhatsApp
+    as a document message using a publicly accessible download URL.
+
+    Meta requires either a hosted URL or a media upload ID.
+    We use the /download endpoint (served by this same FastAPI server)
+    which means the EC2 public IP must be reachable by Meta's servers.
+    """
+    if not _PHONE_NUMBER_ID or not _WA_TOKEN:
+        return
+
+    # Build the public download URL — relies on EC2 being publicly accessible
+    # If behind a load balancer or private network, replace with your public URL
+    public_base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    if not public_base:
+        logger.warning("[whatsapp] PUBLIC_BASE_URL not set — cannot send PDF artifact.")
+        return
+
+    download_url = (
+        f"{public_base}/download/{_ADK_APP_NAME}"
+        f"/{user_id}/{session_id}/{filename}"
+    )
+
+    await _post_to_graph(to, {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "document",
+        "document": {
+            "link": download_url,
+            "caption": filename,
+            "filename": filename,
+        },
+    })
+
+
+async def _post_to_graph(to: str, payload: dict):
+    """Execute a single Meta Graph API message send."""
+    url = f"{_GRAPH_URL}/{_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {_WA_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.post(url, json=payload, headers=headers)
+            if res.status_code not in (200, 201):
+                logger.error(
+                    f"[whatsapp] Graph API error {res.status_code}: {res.text[:300]}"
+                )
+            else:
+                logger.debug(f"[whatsapp] Message sent to {to}: {res.status_code}")
+    except Exception as e:
+        logger.error(f"[whatsapp] Failed to post to Graph API: {e}", exc_info=True)
+
+
+def _split_message(text: str, limit: int = 4000) -> list[str]:
+    """Split a long message at word boundaries to stay under WhatsApp's limit."""
+    if len(text) <= limit:
+        return [text]
+    chunks = []
+    while text:
+        if len(text) <= limit:
+            chunks.append(text)
+            break
+        # Find last newline or space before limit
+        cut = text.rfind("\n", 0, limit)
+        if cut == -1:
+            cut = text.rfind(" ", 0, limit)
+        if cut == -1:
+            cut = limit
+        chunks.append(text[:cut].strip())
+        text = text[cut:].strip()
+    return chunks
+
+
+# ── Manual reply sender (called from the /whatsapp/{phone}/reply endpoint) ────
+
+async def send_manual_reply(phone: str, text: str, agent_name: str = "Agent") -> bool:
+    """
+    Send a human-typed reply from the UI to a WhatsApp contact.
+    Persists the outbound message and sends via Meta Graph API.
+    """
+    save_message(
+        phone=phone,
+        direction="outbound",
+        text=text,
+        sender_label=agent_name,
+    )
+    await _send_text_message(phone, text)
+    return True

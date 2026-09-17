@@ -42,6 +42,11 @@ from data.handovers import (
     set_group_handover_mode, get_group_handover_mode
 )
 from data.group_ai_session import get_group_session_identity, APP_NAME as GROUP_APP_NAME
+from data.whatsapp_contacts import (
+    get_or_create_contact, set_ai_muted, list_contacts,
+    get_messages_for_phone, save_message,
+)
+from whatsapp.webhook import router as whatsapp_router, send_manual_reply
 
 # Request-scoped identity — set by middleware, read by the token tracker callback
 _current_user_id: ContextVar[str] = ContextVar("current_user_id", default="unknown")
@@ -83,6 +88,9 @@ app: FastAPI = get_fast_api_app(
     allow_origins=ALLOWED_ORIGINS,
     web=False,
 )
+
+# Mount WhatsApp webhook router
+app.include_router(whatsapp_router)
 
 # One shared artifact service instance for the download endpoint
 _artifact_svc = create_artifact_service_from_options(
@@ -946,6 +954,64 @@ def approve_handover_endpoint(handover_id: str, req: ApproveHandoverRequest):
     if not res:
         raise HTTPException(status_code=404, detail="Handover not found")
     return res
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── WhatsApp Management API ───────────────────────────────────────────────────
+
+@app.get("/whatsapp/conversations", summary="List all WhatsApp contacts with last message and mute status")
+def list_whatsapp_conversations_endpoint():
+    """Returns all WhatsApp contacts enriched with their most recent message."""
+    contacts = list_contacts()
+    result = []
+    for c in contacts:
+        msgs = get_messages_for_phone(c["phone"], limit=1)
+        last = msgs[0] if msgs else None
+        result.append({
+            **c,
+            "last_message": last,
+        })
+    return {"conversations": result}
+
+
+@app.get("/whatsapp/conversations/{phone}/messages", summary="Get message history for a WhatsApp contact")
+def get_whatsapp_messages_endpoint(phone: str, limit: int = 100):
+    msgs = get_messages_for_phone(phone, limit=limit)
+    return {"messages": msgs}
+
+
+class WaMuteRequest(BaseModel):
+    ai_muted: bool
+
+
+@app.patch("/whatsapp/conversations/{phone}/mute", summary="Mute or unmute AI for a WhatsApp conversation")
+def mute_whatsapp_conversation_endpoint(phone: str, req: WaMuteRequest):
+    """Toggle AI auto-reply for a specific WhatsApp contact."""
+    success = set_ai_muted(phone, req.ai_muted)
+    if not success:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"status": "ok", "phone": phone, "ai_muted": req.ai_muted}
+
+
+class WaReplyRequest(BaseModel):
+    text: str
+    agent_name: str = "Agent"
+
+
+@app.post("/whatsapp/conversations/{phone}/reply", summary="Send a manual reply to a WhatsApp contact")
+async def whatsapp_manual_reply_endpoint(phone: str, req: WaReplyRequest):
+    """
+    Sends a human-typed message from the UI to the contact's WhatsApp.
+    Use this when AI is muted and the agent is handling the conversation manually.
+    """
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Message text cannot be empty")
+
+    # Ensure contact exists
+    contact = get_or_create_contact(phone)
+    await send_manual_reply(phone, req.text.strip(), req.agent_name)
+    return {"status": "sent", "phone": phone}
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 
