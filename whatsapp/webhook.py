@@ -299,7 +299,7 @@ async def _download_and_save_media(
             session_id = contact["session_id"]
             
             # Import artifact service
-            from main import _artifact_svc, _ADK_APP_NAME
+            from main import _artifact_svc
             import google.genai.types as types
             
             artifact = types.Part(
