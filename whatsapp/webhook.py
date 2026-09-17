@@ -125,12 +125,48 @@ async def _process_message(msg: dict, contact_names: dict):
 
     # Extract text (text messages) or caption (image/doc messages)
     text = ""
+    uploaded_filename = None
+    
     if msg_type == "text":
         text = msg.get("text", {}).get("body", "").strip()
-    elif msg_type in ("image", "document", "audio", "video"):
+    elif msg_type in ("image", "document"):
+        # Download and save media automatically
+        media_data = msg.get(msg_type, {})
+        media_id = media_data.get("id", "")
+        caption = media_data.get("caption", "").strip()
+        mime_type = media_data.get("mime_type", "")
+        filename = media_data.get("filename", "") if msg_type == "document" else ""
+        
+        if media_id:
+            try:
+                uploaded_filename = await _download_and_save_media(
+                    media_id, phone, mime_type, filename, msg_type
+                )
+                if uploaded_filename:
+                    # Auto-generate prompt based on document type
+                    if caption:
+                        text = caption
+                    else:
+                        # Smart auto-prompt based on file type
+                        if msg_type == "image" or mime_type.startswith("image/"):
+                            text = f"I uploaded {uploaded_filename}. Please extract traveler details from this document."
+                        elif "pdf" in mime_type.lower() or (filename and filename.endswith(".pdf")):
+                            text = f"I uploaded {uploaded_filename}. Please analyze this insurance document."
+                        else:
+                            text = f"I uploaded {uploaded_filename}. Please review this document."
+                    
+                    logger.info(f"[whatsapp] Media saved as {uploaded_filename}, auto-prompt: {text[:80]}")
+                else:
+                    text = "[Document received but couldn't be downloaded - please try again]"
+            except Exception as e:
+                logger.error(f"[whatsapp] Failed to download media: {e}", exc_info=True)
+                text = f"[Document received but processing failed - please try again]"
+        else:
+            text = caption if caption else "[Document received without media ID]"
+    elif msg_type in ("audio", "video"):
         text = msg.get(msg_type, {}).get("caption", "").strip()
         if not text:
-            text = f"[{msg_type} received — document/media not supported via WhatsApp yet]"
+            text = f"[{msg_type} messages are not supported yet]"
     elif msg_type == "interactive":
         # Button reply or list reply
         interactive = msg.get("interactive", {})
@@ -197,6 +233,96 @@ async def _process_message(msg: dict, contact_names: dict):
     pdf_names = extract_artifact_filenames(agent_response_text)
     for filename in pdf_names:
         await _send_pdf_artifact(phone, user_id, session_id, filename)
+
+
+# ── Media download helper ──────────────────────────────────────────────────────
+
+async def _download_and_save_media(
+    media_id: str,
+    phone: str,
+    mime_type: str,
+    filename: str,
+    msg_type: str
+) -> str:
+    """
+    Downloads media from WhatsApp Cloud API and saves it as an artifact.
+    Returns the saved filename or None if failed.
+    """
+    if not _WA_TOKEN:
+        logger.warning("[whatsapp] WHATSAPP_TOKEN not set - cannot download media")
+        return None
+    
+    try:
+        # Step 1: Get media URL from Meta Graph API
+        media_url_endpoint = f"{_GRAPH_URL}/{media_id}"
+        headers = {"Authorization": f"Bearer {_WA_TOKEN}"}
+        
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Get media info (URL)
+            media_info_resp = await client.get(media_url_endpoint, headers=headers)
+            if media_info_resp.status_code != 200:
+                logger.error(f"[whatsapp] Failed to get media info: {media_info_resp.status_code}")
+                return None
+            
+            media_info = media_info_resp.json()
+            download_url = media_info.get("url")
+            if not download_url:
+                logger.error("[whatsapp] No download URL in media info")
+                return None
+            
+            # Step 2: Download the actual media file
+            media_resp = await client.get(download_url, headers=headers)
+            if media_resp.status_code != 200:
+                logger.error(f"[whatsapp] Failed to download media: {media_resp.status_code}")
+                return None
+            
+            media_bytes = media_resp.content
+            
+            # Step 3: Generate a filename
+            if not filename:
+                # Generate filename based on type and timestamp
+                import datetime
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                ext_map = {
+                    "image/jpeg": "jpg",
+                    "image/png": "png",
+                    "application/pdf": "pdf",
+                    "image/webp": "webp",
+                }
+                ext = ext_map.get(mime_type, msg_type)
+                filename = f"whatsapp_{phone}_{ts}.{ext}"
+            
+            # Step 4: Save as artifact using ADK artifact service
+            # We need to store it for the user's session
+            contact = get_or_create_contact(phone)
+            user_id = contact["user_id"]
+            session_id = contact["session_id"]
+            
+            # Import artifact service
+            from main import _artifact_svc, _ADK_APP_NAME
+            import google.genai.types as types
+            
+            artifact = types.Part(
+                inline_data=types.Blob(
+                    mime_type=mime_type or "application/octet-stream",
+                    data=media_bytes,
+                )
+            )
+            
+            await _artifact_svc.save_artifact(
+                app_name=_ADK_APP_NAME,
+                user_id=user_id,
+                session_id=session_id,
+                filename=filename,
+                artifact=artifact,
+            )
+            
+            logger.info(f"[whatsapp] Media saved as artifact: {filename}")
+            return filename
+            
+    except Exception as e:
+        logger.error(f"[whatsapp] Error downloading/saving media: {e}", exc_info=True)
+        return None
 
 
 # ── ADK session helpers ────────────────────────────────────────────────────────
