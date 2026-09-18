@@ -53,6 +53,30 @@ _ADK_APP_NAME = "my_agent"
 # Internal base URL for ADK REST calls (localhost, same process)
 _ADK_BASE = "http://localhost:8000"
 
+# ── Recent messages cache to prevent duplicate sends ───────────────────────────
+from collections import deque
+from datetime import datetime, timedelta
+
+_recent_sends = deque(maxlen=100)  # Store last 100 sent messages
+
+def _is_duplicate_send(phone: str, text: str) -> bool:
+    """Check if we recently sent the exact same message to this phone number."""
+    now = datetime.now()
+    # Clean up old entries (older than 60 seconds)
+    while _recent_sends and (now - _recent_sends[0][2]) > timedelta(seconds=60):
+        _recent_sends.popleft()
+    
+    # Check if this exact message was sent recently
+    for sent_phone, sent_text, sent_time in _recent_sends:
+        if sent_phone == phone and sent_text == text:
+            if (now - sent_time) < timedelta(seconds=10):  # Within 10 seconds
+                return True
+    return False
+
+def _mark_as_sent(phone: str, text: str):
+    """Mark a message as sent to prevent duplicates."""
+    _recent_sends.append((phone, text, datetime.now()))
+
 
 # ── Verification handshake (GET) — kept for direct Meta fallback ──────────────
 @router.get("/whatsapp/webhook", include_in_schema=False)
@@ -78,7 +102,9 @@ async def receive_whatsapp(request: Request):
     """
     try:
         body = await request.json()
-    except Exception:
+        logger.info(f"[whatsapp] Webhook received: {len(body.get('entry', []))} entries")
+    except Exception as e:
+        logger.error(f"[whatsapp] Failed to parse webhook body: {e}")
         return {"status": "ok"}
 
     asyncio.create_task(_handle_payload(body))
@@ -126,6 +152,7 @@ async def _process_message(msg: dict, contact_names: dict):
     # Extract text (text messages) or caption (image/doc messages)
     text = ""
     uploaded_filename = None
+    uploaded_agent_prompt = None  # Separate prompt for AI when media is uploaded
     
     if msg_type == "text":
         text = msg.get("text", {}).get("body", "").strip()
@@ -143,21 +170,31 @@ async def _process_message(msg: dict, contact_names: dict):
                     media_id, phone, mime_type, filename, msg_type
                 )
                 if uploaded_filename:
-                    # Auto-generate prompt based on document type
+                    # Create display text (what users see in UI) and agent prompt (what AI receives)
                     if caption:
-                        text = caption
+                        # User provided a caption
+                        display_text = f"📎 {uploaded_filename}\n{caption}"
+                        agent_prompt = caption  # AI gets the caption as instruction
                     else:
-                        # Smart auto-prompt based on file type
+                        # No caption - create appropriate display and agent instruction
                         if msg_type == "image" or mime_type.startswith("image/"):
-                            text = f"I uploaded {uploaded_filename}. Please extract traveler details from this document."
+                            display_text = f"📷 {uploaded_filename}"
+                            agent_prompt = f"I uploaded {uploaded_filename}. Please extract traveler details from this document."
                         elif "pdf" in mime_type.lower() or (filename and filename.endswith(".pdf")):
-                            text = f"I uploaded {uploaded_filename}. Please analyze this insurance document."
+                            display_text = f"📄 {uploaded_filename}"
+                            agent_prompt = f"I uploaded {uploaded_filename}. Please analyze this insurance document."
                         else:
-                            text = f"I uploaded {uploaded_filename}. Please review this document."
+                            display_text = f"📎 {uploaded_filename}"
+                            agent_prompt = f"I uploaded {uploaded_filename}. Please review this document."
                     
-                    logger.info(f"[whatsapp] Media saved as {uploaded_filename}, auto-prompt: {text[:80]}")
+                    text = display_text  # Used for saving to DB (what UI shows)
+                    # Store agent_prompt separately - we'll use it when calling the agent
+                    uploaded_agent_prompt = agent_prompt
+                    
+                    logger.info(f"[whatsapp] Media saved as {uploaded_filename}, display: {display_text}")
                 else:
                     text = "[Document received but couldn't be downloaded - please try again]"
+                    uploaded_agent_prompt = None
             except Exception as e:
                 logger.error(f"[whatsapp] Failed to download media: {e}", exc_info=True)
                 text = f"[Document received but processing failed - please try again]"
@@ -210,7 +247,9 @@ async def _process_message(msg: dict, contact_names: dict):
     await _ensure_adk_session(user_id, session_id)
 
     # ── Call ADK agent and collect full response ───────────────────────────────
-    agent_response_text = await _call_agent(user_id, session_id, text)
+    # If media was uploaded, use the agent prompt instead of display text
+    agent_input_text = uploaded_agent_prompt if uploaded_agent_prompt else text
+    agent_response_text = await _call_agent(user_id, session_id, agent_input_text)
 
     if not agent_response_text:
         logger.warning(f"[whatsapp] Agent returned empty response for {phone}")
@@ -227,7 +266,16 @@ async def _process_message(msg: dict, contact_names: dict):
     # ── Format and send to WhatsApp ────────────────────────────────────────────
     wa_text = format_for_whatsapp(agent_response_text)
     if wa_text:
+        # Check for duplicate send
+        if _is_duplicate_send(phone, wa_text):
+            logger.warning(f"[whatsapp] Duplicate send detected for {phone}, skipping")
+            return
+        
+        logger.info(f"[whatsapp] Sending response to {phone}: {len(wa_text)} chars")
         await _send_text_message(phone, wa_text)
+        _mark_as_sent(phone, wa_text)
+    else:
+        logger.warning(f"[whatsapp] Empty formatted text for {phone}, nothing to send")
 
     # ── Send any PDF artifacts as WhatsApp document messages ──────────────────
     pdf_names = extract_artifact_filenames(agent_response_text)
