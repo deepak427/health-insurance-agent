@@ -36,7 +36,11 @@ from data.whatsapp_contacts import (
     set_ai_muted,
     message_already_processed,
 )
-from whatsapp.formatter import format_for_whatsapp, extract_artifact_filenames
+from whatsapp.formatter import (
+    format_for_whatsapp, 
+    extract_artifact_filenames,
+    extract_interactive_messages
+)
 
 logger = logging.getLogger("whatsapp.webhook")
 
@@ -156,6 +160,52 @@ async def _process_message(msg: dict, contact_names: dict):
     
     if msg_type == "text":
         text = msg.get("text", {}).get("body", "").strip()
+    
+    elif msg_type == "interactive":
+        # Handle interactive message responses (list/button clicks)
+        interactive = msg.get("interactive", {})
+        interactive_type = interactive.get("type", "")
+        
+        if interactive_type == "list_reply":
+            # User selected from interactive list
+            list_reply = interactive.get("list_reply", {})
+            selected_id = list_reply.get("id", "")
+            selected_title = list_reply.get("title", "")
+            
+            logger.info(f"[whatsapp] Interactive list selection: {selected_id} - {selected_title}")
+            
+            # Map selection to user-friendly text
+            if selected_id.startswith("policy_"):
+                text = f"I'd like to book {selected_title}"
+            elif selected_id.startswith("addon_"):
+                text = f"Add {selected_title} to my policy"
+            elif selected_id.startswith("vas_"):
+                text = f"I want {selected_title}"
+            else:
+                text = selected_title
+        
+        elif interactive_type == "button_reply":
+            # User clicked an interactive button
+            button_reply = interactive.get("button_reply", {})
+            button_id = button_reply.get("id", "")
+            button_title = button_reply.get("title", "")
+            
+            logger.info(f"[whatsapp] Interactive button click: {button_id} - {button_title}")
+            
+            # Map button clicks to actions
+            if button_id == "confirm_booking":
+                text = "Yes, confirm the booking"
+            elif button_id == "modify_booking":
+                text = "I want to modify the booking"
+            elif button_id == "cancel_booking":
+                text = "Cancel the booking"
+            else:
+                text = button_title
+        
+        else:
+            logger.warning(f"[whatsapp] Unknown interactive type: {interactive_type}")
+            return
+    
     elif msg_type in ("image", "document"):
         # Download and save media automatically
         media_data = msg.get(msg_type, {})
@@ -264,18 +314,45 @@ async def _process_message(msg: dict, contact_names: dict):
     )
 
     # ── Format and send to WhatsApp ────────────────────────────────────────────
-    wa_text = format_for_whatsapp(agent_response_text)
-    if wa_text:
-        # Check for duplicate send
-        if _is_duplicate_send(phone, wa_text):
-            logger.warning(f"[whatsapp] Duplicate send detected for {phone}, skipping")
-            return
-        
-        logger.info(f"[whatsapp] Sending response to {phone}: {len(wa_text)} chars")
-        await _send_text_message(phone, wa_text)
-        _mark_as_sent(phone, wa_text)
+    # Extract interactive messages (lists/buttons) or fallback to plain text
+    formatted = extract_interactive_messages(agent_response_text)
+    
+    # Send interactive list if available (policies, addons, VAS)
+    if formatted.get("interactive_list"):
+        if not _is_duplicate_send(phone, "interactive_list"):
+            logger.info(f"[whatsapp] Sending interactive list to {phone}")
+            await _send_interactive_message(phone, formatted["interactive_list"])
+            _mark_as_sent(phone, "interactive_list")
+            
+            # Also send any accompanying text
+            if formatted.get("text"):
+                await _send_text_message(phone, formatted["text"])
+    
+    # Send interactive buttons if available (confirmations)
+    elif formatted.get("interactive_buttons"):
+        if not _is_duplicate_send(phone, "interactive_buttons"):
+            logger.info(f"[whatsapp] Sending interactive buttons to {phone}")
+            await _send_interactive_message(phone, formatted["interactive_buttons"])
+            _mark_as_sent(phone, "interactive_buttons")
+            
+            # Also send any accompanying text
+            if formatted.get("text"):
+                await _send_text_message(phone, formatted["text"])
+    
+    # Fallback to plain text
     else:
-        logger.warning(f"[whatsapp] Empty formatted text for {phone}, nothing to send")
+        wa_text = formatted.get("plain_text") or format_for_whatsapp(agent_response_text)
+        if wa_text:
+            # Check for duplicate send
+            if _is_duplicate_send(phone, wa_text):
+                logger.warning(f"[whatsapp] Duplicate send detected for {phone}, skipping")
+                return
+            
+            logger.info(f"[whatsapp] Sending plain text to {phone}: {len(wa_text)} chars")
+            await _send_text_message(phone, wa_text)
+            _mark_as_sent(phone, wa_text)
+        else:
+            logger.warning(f"[whatsapp] Empty formatted text for {phone}, nothing to send")
 
     # ── Send any PDF artifacts as WhatsApp document messages ──────────────────
     pdf_names = extract_artifact_filenames(agent_response_text)
@@ -480,6 +557,31 @@ async def _send_text_message(to: str, text: str):
             "type": "text",
             "text": {"preview_url": False, "body": chunk},
         })
+
+
+async def _send_interactive_message(to: str, interactive_payload: dict):
+    """
+    Send a WhatsApp Interactive Message (list or buttons) via Meta Graph API.
+    
+    Args:
+        to: WhatsApp phone number (with country code)
+        interactive_payload: Dict with interactive message structure
+            For lists: {"type": "list", "header": {...}, "body": {...}, "action": {...}}
+            For buttons: {"type": "button", "body": {...}, "action": {...}}
+    """
+    if not _PHONE_NUMBER_ID or not _WA_TOKEN:
+        logger.warning("[whatsapp] WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_TOKEN not set — skipping send.")
+        return
+    
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": interactive_payload
+    }
+    
+    await _post_to_graph(to, payload)
 
 
 async def _send_pdf_artifact(

@@ -1,21 +1,23 @@
 """
-WhatsApp plain-text formatter.
+WhatsApp formatter with Interactive Message support.
 
 Takes the agent's raw response string (which may contain embedded card markers
-like <!--POLICY_CARDS:[...]-->) and produces clean, readable plain text
-suitable for WhatsApp.
+like <!--POLICY_CARDS:[...]-->) and produces either:
+  1. WhatsApp Interactive List/Button messages (native rich UI)
+  2. Clean, readable plain text fallback
 
-WhatsApp does NOT render markdown tables, HTML, or custom JSON blocks.
-It does render *bold* (asterisks) and _italic_ (underscores), which we use
-sparingly for headers and key fields.
+WhatsApp Interactive Message Types:
+  - Interactive List: Up to 10 items with title + description (for policies, addons, VAS)
+  - Interactive Buttons: Up to 3 buttons (for confirmations, quick actions)
+  - Plain text: Fallback for older WhatsApp versions
 
 Card types handled:
-  POLICY_CARDS        → numbered list of policy options
-  ADDON_CARDS         → bulleted addon options
-  VAS_CARDS           → bulleted VAS options
-  BOOKING_CARDS       → booking summary block
-  BOOKING_TABLE       → tabular booking list as text
-  CONFIRM_BOOKING     → booking confirmation request
+  POLICY_CARDS        → Interactive List with policy options
+  ADDON_CARDS         → Interactive List with addon options
+  VAS_CARDS           → Interactive List with VAS options
+  BOOKING_CARDS       → Plain text booking summary
+  BOOKING_TABLE       → Plain text booking list
+  CONFIRM_BOOKING     → Interactive Buttons (Confirm/Modify/Cancel)
   Any unknown card    → stripped silently (never crashes)
 
 PDF artifacts are NOT handled here — they are sent as WhatsApp document
@@ -23,7 +25,7 @@ messages by the webhook handler after it collects artifact filenames.
 """
 import json
 import re
-from typing import Optional
+from typing import Optional, Dict, List, Union
 
 
 # Regex that matches ANY card comment block, e.g.:
@@ -188,6 +190,9 @@ def format_for_whatsapp(text: str) -> str:
     Replace all embedded card blocks in *text* with WhatsApp-friendly plain text.
     Non-card text is preserved as-is (the agent already writes plain sentences).
     Returns the cleaned string ready to send via Meta Graph API.
+    
+    NOTE: This is the FALLBACK formatter. Use extract_interactive_messages() 
+    to get native WhatsApp interactive lists/buttons instead.
     """
     if not text:
         return ""
@@ -218,6 +223,289 @@ def format_for_whatsapp(text: str) -> str:
     result = re.sub(r"\n{3,}", "\n\n", result)
 
     return result.strip()
+
+
+# ── Interactive Message Formatters (WhatsApp Native UI) ────────────────────────
+
+def extract_interactive_messages(text: str) -> Dict[str, Union[str, List[Dict]]]:
+    """
+    Extract WhatsApp Interactive List/Button messages from agent response.
+    
+    Returns a dict with:
+      - "text": The plain text with card markers removed
+      - "interactive_list": List message payload (if POLICY_CARDS/ADDON_CARDS/VAS_CARDS found)
+      - "interactive_buttons": Button message payload (if confirm-type POLICY_CARDS found)
+      - "plain_text": Fallback plain text version (always present)
+    
+    If no interactive content is found, returns only plain_text.
+    """
+    if not text:
+        return {"plain_text": ""}
+    
+    result = {
+        "plain_text": format_for_whatsapp(text),
+        "text": text,
+        "interactive_list": None,
+        "interactive_buttons": None,
+    }
+    
+    # Extract first occurrence of each card type
+    for match in _CARD_RE.finditer(text):
+        card_type = match.group(1).strip().upper()
+        raw_data = match.group(2).strip()
+        
+        try:
+            data = json.loads(raw_data)
+        except json.JSONDecodeError:
+            continue
+        
+        # Policy cards → Check if it's a confirm card or regular policy list
+        if card_type == "POLICY_CARDS":
+            cards_list = data if isinstance(data, list) else [data]
+            # Check if it's a confirm card (type="confirm" or has destination/travelDates)
+            first_card = cards_list[0] if cards_list else {}
+            card_subtype = first_card.get("type", "").lower()
+            is_confirm = (
+                card_subtype == "confirm" or
+                "destination" in first_card or
+                "travelDates" in first_card or
+                "travel_dates" in first_card
+            )
+            
+            if is_confirm and result["interactive_buttons"] is None:
+                result["interactive_buttons"] = _build_confirm_buttons(first_card)
+            elif not is_confirm and result["interactive_list"] is None:
+                result["interactive_list"] = _build_policy_list(cards_list)
+        
+        # Addon cards → Interactive List
+        elif card_type == "ADDON_CARDS" and result["interactive_list"] is None:
+            result["interactive_list"] = _build_addon_list(data)
+        
+        # VAS cards → Interactive List
+        elif card_type == "VAS_CARDS" and result["interactive_list"] is None:
+            result["interactive_list"] = _build_vas_list(data)
+        
+        # Legacy CONFIRM_BOOKING marker (keeping for backwards compatibility)
+        elif card_type == "CONFIRM_BOOKING" and result["interactive_buttons"] is None:
+            result["interactive_buttons"] = _build_confirm_buttons(data)
+    
+    # Remove card markers from text
+    clean_text = _CARD_RE.sub("", text)
+    clean_text = re.sub(r"<!--.*?-->", "", clean_text, flags=re.DOTALL)
+    clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
+    result["text"] = clean_text
+    
+    return result
+
+
+def _build_policy_list(cards: Union[List, Dict]) -> Dict:
+    """Build WhatsApp Interactive List for policy cards."""
+    cards_list = cards if isinstance(cards, list) else [cards]
+    
+    # WhatsApp allows max 10 items per list
+    cards_list = cards_list[:10]
+    
+    rows = []
+    for i, card in enumerate(cards_list, 1):
+        name = card.get("name") or card.get("plan_name") or f"Plan {i}"
+        insurer = card.get("insurer") or card.get("provider") or ""
+        premium = card.get("premium") or card.get("price") or ""
+        cover = card.get("sum_insured") or card.get("coverage") or card.get("cover") or ""
+        
+        # Title: max 24 chars
+        title = name[:24]
+        
+        # Description: max 72 chars
+        desc_parts = []
+        if premium:
+            desc_parts.append(f"₹{premium}" if not str(premium).startswith("₹") else str(premium))
+        if cover:
+            desc_parts.append(f"Cover: {cover}")
+        elif insurer:
+            desc_parts.append(insurer)
+        
+        description = " | ".join(desc_parts)[:72]
+        
+        rows.append({
+            "id": f"policy_{i}",
+            "title": title,
+            "description": description or "Travel Insurance Plan"
+        })
+    
+    return {
+        "type": "list",
+        "header": {"type": "text", "text": "🛡️ Travel Insurance Plans"},
+        "body": {"text": "Choose the best plan for your journey. Tap below to view all available options."},
+        "footer": {"text": "Powered by Dolphin Buddy 🐬"},
+        "action": {
+            "button": "View Plans",
+            "sections": [{
+                "title": "Available Plans",
+                "rows": rows
+            }]
+        }
+    }
+
+
+def _build_addon_list(cards: Union[List, Dict]) -> Dict:
+    """Build WhatsApp Interactive List for addon cards."""
+    cards_list = cards if isinstance(cards, list) else [cards]
+    cards_list = cards_list[:10]
+    
+    rows = []
+    for i, card in enumerate(cards_list, 1):
+        name = card.get("name") or card.get("title") or f"Addon {i}"
+        price = card.get("price") or card.get("premium") or ""
+        desc = card.get("description") or card.get("desc") or ""
+        
+        title = name[:24]
+        
+        desc_parts = []
+        if price:
+            desc_parts.append(f"₹{price}" if not str(price).startswith("₹") else str(price))
+        if desc:
+            desc_parts.append(desc[:50])
+        
+        description = " | ".join(desc_parts)[:72] or "Add-on Coverage"
+        
+        rows.append({
+            "id": f"addon_{i}",
+            "title": title,
+            "description": description
+        })
+    
+    return {
+        "type": "list",
+        "header": {"type": "text", "text": "✨ Available Add-ons"},
+        "body": {"text": "Enhance your coverage with these optional add-ons. Tap below to see all options."},
+        "footer": {"text": "Powered by Dolphin Buddy 🐬"},
+        "action": {
+            "button": "View Add-ons",
+            "sections": [{
+                "title": "Add-on Options",
+                "rows": rows
+            }]
+        }
+    }
+
+
+def _build_vas_list(cards: Union[List, Dict]) -> Dict:
+    """Build WhatsApp Interactive List for VAS cards."""
+    cards_list = cards if isinstance(cards, list) else [cards]
+    cards_list = cards_list[:10]
+    
+    rows = []
+    for i, card in enumerate(cards_list, 1):
+        name = card.get("name") or card.get("title") or f"Service {i}"
+        price = card.get("price") or card.get("cost") or ""
+        desc = card.get("description") or card.get("desc") or ""
+        
+        title = name[:24]
+        
+        desc_parts = []
+        if price:
+            desc_parts.append(f"₹{price}" if not str(price).startswith("₹") else str(price))
+        if desc:
+            desc_parts.append(desc[:50])
+        
+        description = " | ".join(desc_parts)[:72] or "Value Added Service"
+        
+        rows.append({
+            "id": f"vas_{i}",
+            "title": title,
+            "description": description
+        })
+    
+    return {
+        "type": "list",
+        "header": {"type": "text", "text": "💼 Value Added Services"},
+        "body": {"text": "Premium services to make your travel experience seamless. Tap below to explore."},
+        "footer": {"text": "Powered by Dolphin Buddy 🐬"},
+        "action": {
+            "button": "View Services",
+            "sections": [{
+                "title": "VAS Options",
+                "rows": rows
+            }]
+        }
+    }
+
+
+def _build_confirm_buttons(data: Union[List, Dict]) -> Dict:
+    """Build WhatsApp Interactive Buttons for booking confirmation."""
+    card = data[0] if isinstance(data, list) else data
+    
+    # Handle both field naming conventions
+    policy = (
+        card.get("name") or 
+        card.get("policy_name") or 
+        card.get("plan") or 
+        "Policy"
+    )
+    company = card.get("company") or card.get("insurer") or ""
+    dest = card.get("destination") or ""
+    dates = card.get("travelDates") or card.get("travel_dates") or ""
+    travellers = card.get("travellers") or ""
+    adults = card.get("num_adults") or ""
+    children = card.get("num_children") or ""
+    premium = card.get("premium") or ""
+    sum_insured = card.get("sumInsured") or card.get("sum_insured") or ""
+    
+    # Build travellers string if not provided
+    if not travellers and (adults or children):
+        pax = f"{adults} adult(s)" if adults else ""
+        if children:
+            pax += f", {children} child(ren)" if pax else f"{children} child(ren)"
+        travellers = pax
+    
+    # Build message body
+    lines = ["📋 *Booking Confirmation*\n"]
+    lines.append(f"*Plan:* {policy}")
+    if company:
+        lines.append(f"*Insurer:* {company}")
+    if dest:
+        lines.append(f"*Destination:* {dest}")
+    if dates:
+        lines.append(f"*Dates:* {dates}")
+    if travellers:
+        lines.append(f"*Travellers:* {travellers}")
+    if sum_insured:
+        lines.append(f"*Cover:* {sum_insured}")
+    if premium:
+        lines.append(f"\n*Total Premium:* {premium}")
+    
+    body_text = "\n".join(lines)
+    
+    return {
+        "type": "button",
+        "body": {"text": body_text},
+        "footer": {"text": "Choose an action below"},
+        "action": {
+            "buttons": [
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "confirm_booking",
+                        "title": "✅ Confirm"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "modify_booking",
+                        "title": "✏️ Modify"
+                    }
+                },
+                {
+                    "type": "reply",
+                    "reply": {
+                        "id": "cancel_booking",
+                        "title": "❌ Cancel"
+                    }
+                }
+            ]
+        }
+    }
 
 
 def extract_artifact_filenames(text: str) -> list[str]:
