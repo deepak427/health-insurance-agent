@@ -298,10 +298,11 @@ def extract_interactive_messages(text: str) -> Dict[str, Union[str, List[Dict]]]
     return result
 
 
-def _build_policy_list(cards: Union[List, Dict]) -> Dict:
-    """Build WhatsApp Interactive List for policy cards."""
-    cards_list = cards if isinstance(cards, list) else [cards]
-    
+def _build_policy_list_fallback(cards_list: List[Dict]) -> Dict:
+    """
+    Build fallback Interactive List for policy cards when catalog is not available.
+    Used when product catalog is not set up or carousel fails.
+    """
     # WhatsApp allows max 10 items per list
     cards_list = cards_list[:10]
     
@@ -344,6 +345,62 @@ def _build_policy_list(cards: Union[List, Dict]) -> Dict:
                 "rows": rows
             }]
         }
+    }
+
+
+def _build_policy_list(cards: Union[List, Dict]) -> Dict:
+    """
+    Build WhatsApp Multi-Product Carousel for policy cards.
+    
+    Returns a product_list interactive message that shows policy cards
+    as a horizontal carousel with images (if catalog is set up).
+    Falls back to regular list if no catalog.
+    """
+    cards_list = cards if isinstance(cards, list) else [cards]
+    
+    # WhatsApp allows max 30 products in carousel, but practical limit is 10
+    cards_list = cards_list[:10]
+    
+    # Build product items for carousel
+    product_items = []
+    
+    for i, card in enumerate(cards_list, 1):
+        name = card.get("name") or card.get("plan_name") or f"Plan {i}"
+        insurer = card.get("insurer") or card.get("provider") or ""
+        premium = card.get("premium") or card.get("price") or ""
+        cover = card.get("sum_insured") or card.get("coverage") or card.get("cover") or ""
+        
+        # Create a product retailer ID from the policy name
+        # This should match products in your WhatsApp catalog
+        # Format: lowercase, replace spaces with underscores
+        product_id = name.lower().replace(" ", "_").replace("-", "_")[:100]
+        
+        product_items.append({
+            "product_retailer_id": product_id
+        })
+    
+    # Multi-Product Message (Carousel)
+    return {
+        "type": "product_list",
+        "header": {
+            "type": "text",
+            "text": "🛡️ Travel Insurance"
+        },
+        "body": {
+            "text": "Swipe through our recommended plans. Each plan includes comprehensive coverage and 24/7 support."
+        },
+        "footer": {
+            "text": "Powered by Dolphin Buddy 🐬"
+        },
+        "action": {
+            "catalog_id": "${CATALOG_ID}",  # Placeholder - will be replaced from env
+            "sections": [{
+                "title": "Recommended Plans",
+                "product_items": product_items
+            }]
+        },
+        # Store original card data for fallback
+        "_fallback_data": cards_list
     }
 
 

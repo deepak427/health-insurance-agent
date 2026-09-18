@@ -39,7 +39,8 @@ from data.whatsapp_contacts import (
 from whatsapp.formatter import (
     format_for_whatsapp, 
     extract_artifact_filenames,
-    extract_interactive_messages
+    extract_interactive_messages,
+    _build_policy_list_fallback
 )
 
 logger = logging.getLogger("whatsapp.webhook")
@@ -51,6 +52,7 @@ _GRAPH_URL = "https://graph.facebook.com/v19.0"
 _PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 _WA_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 _VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "dolphin_verify")
+_CATALOG_ID = os.environ.get("WHATSAPP_CATALOG_ID", "")  # WhatsApp Product Catalog ID
 
 # ADK app name — must match the folder name under hip/
 _ADK_APP_NAME = "my_agent"
@@ -314,19 +316,54 @@ async def _process_message(msg: dict, contact_names: dict):
     )
 
     # ── Format and send to WhatsApp ────────────────────────────────────────────
-    # Extract interactive messages (lists/buttons) or fallback to plain text
+    # Extract interactive messages (carousel/lists/buttons) or fallback to plain text
     formatted = extract_interactive_messages(agent_response_text)
     
-    # Send interactive list if available (policies, addons, VAS)
+    # Send interactive list/carousel if available (policies, addons, VAS)
     if formatted.get("interactive_list"):
-        if not _is_duplicate_send(phone, "interactive_list"):
-            logger.info(f"[whatsapp] Sending interactive list to {phone}")
-            await _send_interactive_message(phone, formatted["interactive_list"])
-            _mark_as_sent(phone, "interactive_list")
-            
-            # Also send any accompanying text
-            if formatted.get("text"):
-                await _send_text_message(phone, formatted["text"])
+        interactive_payload = formatted["interactive_list"]
+        
+        # Check if it's a product_list (carousel) and handle catalog ID
+        if interactive_payload.get("type") == "product_list":
+            if _CATALOG_ID:
+                # Replace placeholder with actual catalog ID
+                interactive_payload["action"]["catalog_id"] = _CATALOG_ID
+                
+                if not _is_duplicate_send(phone, "interactive_carousel"):
+                    logger.info(f"[whatsapp] Sending product carousel to {phone}")
+                    success = await _send_interactive_message(phone, interactive_payload)
+                    
+                    if success:
+                        _mark_as_sent(phone, "interactive_carousel")
+                        # Send accompanying text if any
+                        if formatted.get("text"):
+                            await _send_text_message(phone, formatted["text"])
+                    else:
+                        # Carousel failed, use fallback list
+                        logger.warning(f"[whatsapp] Carousel failed, using fallback list for {phone}")
+                        fallback_data = interactive_payload.get("_fallback_data", [])
+                        if fallback_data:
+                            fallback_list = _build_policy_list_fallback(fallback_data)
+                            await _send_interactive_message(phone, fallback_list)
+            else:
+                # No catalog ID configured, use fallback list
+                logger.info(f"[whatsapp] No catalog configured, using fallback list for {phone}")
+                fallback_data = interactive_payload.get("_fallback_data", [])
+                if fallback_data:
+                    fallback_list = _build_policy_list_fallback(fallback_data)
+                    await _send_interactive_message(phone, fallback_list)
+                    if formatted.get("text"):
+                        await _send_text_message(phone, formatted["text"])
+        else:
+            # Regular list or other interactive type
+            if not _is_duplicate_send(phone, "interactive_list"):
+                logger.info(f"[whatsapp] Sending interactive list to {phone}")
+                await _send_interactive_message(phone, interactive_payload)
+                _mark_as_sent(phone, "interactive_list")
+                
+                # Also send any accompanying text
+                if formatted.get("text"):
+                    await _send_text_message(phone, formatted["text"])
     
     # Send interactive buttons if available (confirmations)
     elif formatted.get("interactive_buttons"):
@@ -559,29 +596,36 @@ async def _send_text_message(to: str, text: str):
         })
 
 
-async def _send_interactive_message(to: str, interactive_payload: dict):
+async def _send_interactive_message(to: str, interactive_payload: dict) -> bool:
     """
-    Send a WhatsApp Interactive Message (list or buttons) via Meta Graph API.
+    Send a WhatsApp Interactive Message (list, buttons, or carousel) via Meta Graph API.
     
     Args:
         to: WhatsApp phone number (with country code)
         interactive_payload: Dict with interactive message structure
             For lists: {"type": "list", "header": {...}, "body": {...}, "action": {...}}
             For buttons: {"type": "button", "body": {...}, "action": {...}}
+            For carousel: {"type": "product_list", "header": {...}, "action": {"catalog_id": ...}}
+    
+    Returns:
+        bool: True if sent successfully, False otherwise
     """
     if not _PHONE_NUMBER_ID or not _WA_TOKEN:
         logger.warning("[whatsapp] WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_TOKEN not set — skipping send.")
-        return
+        return False
+    
+    # Remove internal fallback data before sending
+    payload_to_send = {k: v for k, v in interactive_payload.items() if not k.startswith("_")}
     
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": to,
         "type": "interactive",
-        "interactive": interactive_payload
+        "interactive": payload_to_send
     }
     
-    await _post_to_graph(to, payload)
+    return await _post_to_graph(to, payload)
 
 
 async def _send_pdf_artifact(
@@ -623,8 +667,11 @@ async def _send_pdf_artifact(
     })
 
 
-async def _post_to_graph(to: str, payload: dict):
-    """Execute a single Meta Graph API message send."""
+async def _post_to_graph(to: str, payload: dict) -> bool:
+    """
+    Execute a single Meta Graph API message send.
+    Returns True if successful, False otherwise.
+    """
     url = f"{_GRAPH_URL}/{_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {_WA_TOKEN}",
@@ -637,10 +684,13 @@ async def _post_to_graph(to: str, payload: dict):
                 logger.error(
                     f"[whatsapp] Graph API error {res.status_code}: {res.text[:300]}"
                 )
+                return False
             else:
                 logger.debug(f"[whatsapp] Message sent to {to}: {res.status_code}")
+                return True
     except Exception as e:
         logger.error(f"[whatsapp] Failed to post to Graph API: {e}", exc_info=True)
+        return False
 
 
 def _split_message(text: str, limit: int = 4000) -> list[str]:
