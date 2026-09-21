@@ -512,6 +512,9 @@ async def _call_agent(user_id: str, session_id: str, text: str) -> str:
     behaviour, guardrails, token tracking, and tool calls all fire normally.
     """
     url = f"{_ADK_BASE}/run_sse"
+    # streaming=False: ADK emits a single final content event instead of
+    # incremental chunks + a final summary, which would cause the response
+    # text to be accumulated twice and sent as a duplicate to WhatsApp.
     payload = {
         "appName": _ADK_APP_NAME,
         "userId": user_id,
@@ -520,7 +523,7 @@ async def _call_agent(user_id: str, session_id: str, text: str) -> str:
             "role": "user",
             "parts": [{"text": text}],
         },
-        "streaming": True,
+        "streaming": False,
     }
 
     accumulated_text = ""

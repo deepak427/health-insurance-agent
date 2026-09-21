@@ -6,7 +6,7 @@ Run this once to create your WhatsApp Product Catalog via API.
 No manual Meta Business Manager access needed!
 
 Requirements:
-1. Set FACEBOOK_BUSINESS_ID in .env (get from Meta Business Settings)
+1. Set WHATSAPP_BUSINESS_ACCOUNT_ID in .env (your WABA ID)
 2. Ensure WHATSAPP_TOKEN has catalog_management permission
 
 Usage:
@@ -29,17 +29,24 @@ async def main():
     print()
     
     # Check prerequisites
-    business_id = os.environ.get("FACEBOOK_BUSINESS_ID", "")
+    waba_id = os.environ.get("WHATSAPP_BUSINESS_ACCOUNT_ID", "")
     wa_token = os.environ.get("WHATSAPP_TOKEN", "")
     
-    if not business_id:
-        print("❌ Missing FACEBOOK_BUSINESS_ID")
+    if not waba_id:
+        print("❌ Missing WHATSAPP_BUSINESS_ACCOUNT_ID")
+        print()
+        print("This is your WABA ID (WhatsApp Business Account ID)")
         print()
         print("How to get it:")
-        print("1. Go to: https://business.facebook.com/settings")
-        print("2. Click 'Business Info' in left sidebar")
-        print("3. Copy 'Business ID' (long number)")
-        print("4. Add to hip/.env: FACEBOOK_BUSINESS_ID=YOUR_BUSINESS_ID")
+        print("1. Go to: https://business.facebook.com/latest/whatsapp_manager")
+        print("2. Select your WhatsApp Business Account")
+        print("3. Click Settings → API Setup")
+        print("4. Copy 'WhatsApp Business Account ID' (the number at the top)")
+        print()
+        print("Example: 1108224387960821")
+        print()
+        print("Add to hip/.env:")
+        print("  WHATSAPP_BUSINESS_ACCOUNT_ID=YOUR_WABA_ID")
         print()
         return
     
@@ -50,57 +57,74 @@ async def main():
         print()
         return
     
-    print(f"✅ Business ID: {business_id}")
+    print(f"✅ WABA ID: {waba_id}")
     print(f"✅ Token: {wa_token[:20]}...")
     print()
     
     # Check if catalog already exists
-    print("Checking for existing catalog...")
-    existing_catalog = await get_catalog_id()
-    
-    if existing_catalog:
-        print(f"✅ Found existing catalog: {existing_catalog}")
-        print()
-        print("Do you want to:")
-        print("  1. Use this catalog (recommended)")
-        print("  2. Create a new catalog")
-        print()
-        choice = input("Enter choice (1 or 2): ").strip()
-        
-        if choice == "1":
-            print()
-            print(f"Using existing catalog: {existing_catalog}")
-            print()
-            print(f"🔧 Add this to hip/.env:")
-            print(f"   WHATSAPP_CATALOG_ID={existing_catalog}")
-            print()
-            return
-    
-    # Create new catalog
+    print("Step 1: Create Catalog in Commerce Manager")
+    print("-" * 70)
     print()
-    print("Creating new catalog with sample policies...")
+    print("WhatsApp catalogs must be created in Meta Commerce Manager first.")
+    print()
+    print("📋 Quick Steps:")
+    print("1. Go to: https://business.facebook.com/commerce/catalogs")
+    print("2. Click 'Create Catalog' → Choose 'E-commerce'")
+    print("3. Name it: 'Travel Insurance Plans'")
+    print("4. After creation, go to catalog settings")
+    print("5. Copy the Catalog ID (long number in URL or settings)")
     print()
     
-    catalog_id = await setup_initial_catalog()
+    catalog_id = input("Enter your Catalog ID (or press Enter to skip): ").strip()
     
-    if catalog_id:
+    if not catalog_id:
+        print()
+        print("⚠️  No Catalog ID provided.")
+        print("Create a catalog first, then run this script again.")
+        print()
+        return
+    
+    print()
+    print(f"✅ Using Catalog ID: {catalog_id}")
+    print()
+    
+    # Add sample policies
+    print("Step 2: Adding Sample Policies")
+    print("-" * 70)
+    print()
+    print("Adding 8 sample insurance policies to your catalog...")
+    print()
+    
+    result_catalog_id = await setup_initial_catalog(catalog_id)
+    
+    if result_catalog_id:
         print()
         print("="*70)
         print("  ✅ SUCCESS!")
         print("="*70)
         print()
-        print(f"📋 Catalog ID: {catalog_id}")
+        print(f"📋 Catalog ID: {result_catalog_id}")
         print()
         print("🔧 Next Steps:")
         print()
         print(f"1. Add to hip/.env:")
-        print(f"   WHATSAPP_CATALOG_ID={catalog_id}")
+        print(f"   WHATSAPP_CATALOG_ID={result_catalog_id}")
         print()
         print("2. Restart your server")
         print()
-        print("3. Test by sending a message asking for travel insurance quotes")
+        print("3. Test by asking for travel insurance quotes on WhatsApp")
         print()
         print("✨ Carousel messages are now enabled!")
+        print()
+        print("📦 8 sample policies added:")
+        print("   • Schengen Visa Shield Gold")
+        print("   • Europe Premium Guard")
+        print("   • Basic Europe Plan")
+        print("   • USA Comprehensive Guard")
+        print("   • Asia Explorer Plan")
+        print("   • Dubai Premium Shield")
+        print("   • Worldwide Elite Plan")
+        print("   • Student Travel Plan")
         print()
     else:
         print()
@@ -110,11 +134,11 @@ async def main():
         print()
         print("Common issues:")
         print()
-        print("1. Token doesn't have catalog_management permission")
-        print("   → Generate new token with catalog permissions")
+        print("1. Catalog ID is incorrect")
+        print("   → Double-check from Commerce Manager catalog settings")
         print()
-        print("2. Business ID is incorrect")
-        print("   → Double-check from Business Settings")
+        print("2. Token doesn't have catalog_management permission")
+        print("   → Generate new token with catalog permissions")
         print()
         print("3. Network/API error")
         print("   → Check logs above for details")
