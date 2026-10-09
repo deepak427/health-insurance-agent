@@ -81,6 +81,6 @@ def get_session_usage(user_id: str, session_id: str) -> dict:
         "total_tokens": total,
         "llm_call_count": calls,
         "estimated_cost_usd": round(cost_usd, 6),
-        "model": "gemini-3.5-flash",
+        "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
         "pricing_note": "$1.50/M input · $9.00/M output (Paid Tier)",
     }

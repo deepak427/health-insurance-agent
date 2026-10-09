@@ -258,7 +258,7 @@ def _build_instruction() -> str:
 
 
 root_agent = Agent(
-    model='gemini-3.5-flash',
+    model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
     name='insurance_support_agent',
     description='Expert insurance support for agents — answers questions, analyzes policy documents, guides claims, manages bookings, and generates booking confirmations.',
     # Use static_instruction so ADK caches it server-side instead of re-sending
