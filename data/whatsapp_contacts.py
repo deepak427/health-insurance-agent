@@ -183,3 +183,20 @@ def message_already_processed(wa_message_id: str) -> bool:
             (wa_message_id,),
         ).fetchone()
     return row is not None
+
+
+def delete_chat(phone: str) -> bool:
+    """
+    Delete all messages for a phone number and remove the contact record.
+    The ADK session must be deleted separately via the ADK REST API.
+    Returns False if the contact didn't exist.
+    """
+    phone = phone.strip()
+    with _conn() as c:
+        cur = c.execute("SELECT user_id, session_id FROM whatsapp_contacts WHERE phone = ?", (phone,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        c.execute("DELETE FROM whatsapp_messages WHERE phone = ?", (phone,))
+        c.execute("DELETE FROM whatsapp_contacts WHERE phone = ?", (phone,))
+    return True

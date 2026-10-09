@@ -44,7 +44,7 @@ from data.handovers import (
 from data.group_ai_session import get_group_session_identity, APP_NAME as GROUP_APP_NAME
 from data.whatsapp_contacts import (
     get_or_create_contact, set_ai_muted, list_contacts,
-    get_messages_for_phone, save_message,
+    get_messages_for_phone, save_message, delete_chat as delete_whatsapp_chat,
 )
 from whatsapp.webhook import router as whatsapp_router, send_manual_reply
 
@@ -1012,7 +1012,33 @@ async def whatsapp_manual_reply_endpoint(phone: str, req: WaReplyRequest):
     await send_manual_reply(phone, req.text.strip(), req.agent_name)
     return {"status": "sent", "phone": phone}
 
-# ─────────────────────────────────────────────────────────────────────────────
+
+@app.delete("/whatsapp/conversations/{phone}", summary="Delete all chat history and reset ADK session for a WhatsApp contact")
+async def delete_whatsapp_conversation_endpoint(phone: str):
+    """
+    Wipes all messages for the contact, removes the contact record, and
+    deletes the ADK session so the next message starts completely fresh.
+    """
+    contact = get_or_create_contact(phone)  # read before we delete
+    user_id = contact["user_id"]
+    session_id = contact["session_id"]
+
+    # Delete messages + contact row from DB
+    deleted = delete_whatsapp_chat(phone)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    # Delete the ADK session so conversation history is wiped from the LLM context
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.delete(
+                f"http://localhost:8000/apps/my_agent/users/{user_id}/sessions/{session_id}"
+            )
+    except Exception as e:
+        print(f"[delete_whatsapp_chat] ADK session delete warning: {e}")
+
+    return {"status": "deleted", "phone": phone}
 
 
 if __name__ == "__main__":
